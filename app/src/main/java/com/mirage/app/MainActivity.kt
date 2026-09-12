@@ -313,26 +313,11 @@ class MainActivity : AppCompatActivity() {
     private fun initCameraOnceOpenCvReady() {
         if (waitingForManualResume) return
         cameraController.startCamera(binding.previewView, null, analysisTargetSize) { analysis, _, _ ->
-            setupCameraSpinner(); attachAnalyzer(analysis); scheduleSessionTimeout()
+            attachAnalyzer(analysis); scheduleSessionTimeout()
             mainHandler.postDelayed({ if (autoZoomEnabled) beginAutoZoomSweep() }, 900L)
         }
     }
 
-    private fun setupCameraSpinner() {
-        val options = cameraController.listRearCameras()
-        binding.cameraSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, options.map { it.label })
-        if (options.isNotEmpty()) binding.cameraSpinner.setSelection(0)
-        binding.cameraSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (waitingForManualResume || position !in options.indices) return
-                cameraController.startCamera(binding.previewView, options[position], analysisTargetSize) { analysis, _, _ ->
-                    attachAnalyzer(analysis)
-                    mainHandler.postDelayed({ if (autoZoomEnabled) beginAutoZoomSweep() }, 700L)
-                }
-            }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-        }
-    }
 
     private fun attachAnalyzer(analysis: ImageAnalysis) {
         val initialHz = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&

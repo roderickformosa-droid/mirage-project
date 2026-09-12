@@ -40,7 +40,8 @@ class WindCueOverlayView @JvmOverloads constructor(context: Context, attrs: Attr
         if (r.fullWidthPx<=0 || r.fullHeightPx<=0) return
         val scale=max(width.toFloat()/r.fullWidthPx,height.toFloat()/r.fullHeightPx)
         val ox=(width-r.fullWidthPx*scale)/2f; val oy=(height-r.fullHeightPx*scale)/2f
-        fun mx(x:Float)=ox+x*scale; fun my(y:Float)=oy+y*scale
+        fun mx(x: Float) = ox + x * scale
+        fun my(y: Float) = oy + y * scale
         fun rect(l:Int,t:Int,rr:Int,b:Int)=RectF(mx(l.toFloat()),my(t.toFloat()),mx(rr.toFloat()),my(b.toFloat()))
 
         val mir = if (r.sufficientSignal) r else lastGoodMirage?.takeIf { now-lastGoodMirageMs<=holdMs }
