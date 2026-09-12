@@ -154,7 +154,7 @@ class FrameAnalyzer(
             val tw=(stabilizedU8.cols()*0.16).toInt(); val th=(stabilizedU8.rows()*0.16).toInt()
 
             val result = AnalysisResult(
-                cameraFrameTimestampNs, SystemClock.elapsedRealtimeNanos(), frameIndex++,
+                cameraTimestampNs, SystemClock.elapsedRealtimeNanos(), frameIndex++,
                 stabilizedU8.cols(), stabilizedU8.rows(), roi.left, roi.top, roi.width(), roi.height(),
                 stabInfo.stepTransform.dx, stabInfo.stepTransform.dy, stabInfo.stepTransform.rotationDeg, stabInfo.disturbance, stabInfo.trackingOk,
                 ofResult.angleDeg, ofResult.magnitude, ofResult.meanMagnitude, ofResult.activeFraction, ofResult.vectors,
