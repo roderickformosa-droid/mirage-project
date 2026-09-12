@@ -1,0 +1,28 @@
+MIRAGE FIELD TESTER v0.5 — CLEAN REPOSITORY UPLOAD
+
+This is a COMPLETE project. Do not merge this with the broken app folder.
+
+Recommended reset:
+1. In GitHub, delete the current repository contents (or create a new empty repo).
+2. Keep the repository itself; make sure the Code tab is empty before uploading.
+3. Extract this ZIP on your PC.
+4. Open the extracted mirage_v05_clean_repo folder.
+5. Upload EVERYTHING INSIDE this folder to the ROOT of the GitHub repository.
+   Do not upload the outer mirage_v05_clean_repo folder itself.
+6. Confirm these exact paths exist:
+   .github/workflows/build.yml
+   app/build.gradle.kts
+   app/src/main/AndroidManifest.xml
+   app/src/main/java/com.mirage.app/MainActivity.kt
+   app/src/main/java/com.mirage.app/analysis/FrameAnalyzer.kt
+   app/src/main/java/com.mirage.app/camera/CameraController.kt
+   app/src/main/java/com.mirage.app/logging/MeasurementLogger.kt
+   app/src/main/java/com.mirage.app/ui/WindCueOverlayView.kt
+   app/src/main/res/layout/activity_main.xml
+   app/src/main/res/values/attrs.xml
+   build.gradle.kts
+   settings.gradle.kts
+7. In activity_main.xml, search for autoZoomToggle and targetHud. Both must be present.
+8. Then run Actions > Build APK > Run workflow.
+
+Do not copy individual Kotlin files to the app root.

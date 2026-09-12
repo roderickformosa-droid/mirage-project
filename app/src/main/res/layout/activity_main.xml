@@ -1,0 +1,339 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/rangeBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <com.mirage.app.ui.RoiOverlayView
+        android:id="@+id/roiOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView" />
+
+    <!-- Always-on user-facing overlay: auto mirage ROI + moving environmental cues. -->
+    <com.mirage.app.ui.WindCueOverlayView
+        android:id="@+id/windCueOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView" />
+
+    <com.mirage.app.ui.DebugOverlayView
+        android:id="@+id/debugOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView" />
+
+    <TextView
+        android:id="@+id/readoutText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        android:background="#99000000"
+        android:padding="7dp"
+        android:fontFamily="monospace"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:text="waiting for analysis..."
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <TextView
+        android:id="@+id/signalQualityText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        android:background="#99000000"
+        android:padding="8dp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:text="SEARCHING"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <LinearLayout
+        android:id="@+id/graphColumn"
+        android:layout_width="130dp"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:background="#66000000"
+        app:layout_constraintTop_toBottomOf="@id/signalQualityText"
+        app:layout_constraintBottom_toTopOf="@id/rangeBar"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="activity" android:textColor="#FFFFFF" android:textSize="9sp" android:paddingStart="4dp"/>
+        <com.mirage.app.ui.GraphView android:id="@+id/graphActivity"
+            android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" app:lineColor="#FF5252" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="angle" android:textColor="#FFFFFF" android:textSize="9sp" android:paddingStart="4dp"/>
+        <com.mirage.app.ui.GraphView android:id="@+id/graphAngle"
+            android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" app:lineColor="#448AFF" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="magnitude" android:textColor="#FFFFFF" android:textSize="9sp" android:paddingStart="4dp"/>
+        <com.mirage.app.ui.GraphView android:id="@+id/graphMagnitude"
+            android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" app:lineColor="#69F0AE" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="stab residual" android:textColor="#FFFFFF" android:textSize="9sp" android:paddingStart="4dp"/>
+        <com.mirage.app.ui.GraphView android:id="@+id/graphStabResidual"
+            android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" app:lineColor="#FFD740" />
+    </LinearLayout>
+
+    <!-- Toggleable target-direction HUD. Camera optical axis is treated as the line to target. -->
+    <TextView
+        android:id="@+id/targetHudText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        android:background="#B3000000"
+        android:padding="7dp"
+        android:fontFamily="monospace"
+        android:gravity="end"
+        android:text="AZ --  --\nMAG --\nINC --\nRNG --"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:textSize="11sp"
+        app:layout_constraintEnd_toEndOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView" />
+
+    <Button
+        android:id="@+id/resumeButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="RESUME"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#2E7D32"
+        android:visibility="gone"
+        android:enabled="false"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView" />
+
+
+    <LinearLayout
+        android:id="@+id/rangeBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#DD0F1820"
+        android:padding="4dp"
+        app:layout_constraintBottom_toTopOf="@id/brightnessBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ToggleButton
+            android:id="@+id/autoRangeToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textOn="RANGE AUTO"
+            android:textOff="RANGE KNOWN"
+            android:textSize="8sp" />
+
+        <EditText
+            android:id="@+id/knownRangeInput"
+            android:layout_width="72dp"
+            android:layout_height="wrap_content"
+            android:hint="range m"
+            android:inputType="numberDecimal"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:textSize="10sp"
+            android:singleLine="true" />
+
+        <EditText
+            android:id="@+id/scopeFovInput"
+            android:layout_width="58dp"
+            android:layout_height="wrap_content"
+            android:hint="FOV°"
+            android:text="2.0"
+            android:inputType="numberDecimal"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:textSize="10sp"
+            android:singleLine="true" />
+
+        <ToggleButton
+            android:id="@+id/seaLevelToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textOn="SEA"
+            android:textOff="GROUND"
+            android:textSize="8sp" />
+
+        <ToggleButton
+            android:id="@+id/targetHudToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textOn="HUD ON"
+            android:textOff="HUD OFF"
+            android:textSize="8sp" />
+
+        <TextView
+            android:id="@+id/navRangeText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="end|center_vertical"
+            android:text="heading --  pitch --  range --"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp" />
+    </LinearLayout>
+
+    <!-- Display controls: keep-screen-on is automatic; ambient-light brightness can be overridden instantly. -->
+    <LinearLayout
+        android:id="@+id/brightnessBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#DD151515"
+        android:padding="4dp"
+        app:layout_constraintBottom_toTopOf="@id/zoomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ToggleButton
+            android:id="@+id/autoBrightnessToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textOn="BRIGHT AUTO"
+            android:textOff="BRIGHT MAN"
+            android:textSize="8sp" />
+
+        <SeekBar
+            android:id="@+id/brightnessSeek"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="100"
+            android:progress="70" />
+
+        <TextView
+            android:id="@+id/brightnessPercent"
+            android:layout_width="78dp"
+            android:layout_height="wrap_content"
+            android:gravity="end|center_vertical"
+            android:text="70% AUTO"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:textSize="9sp" />
+    </LinearLayout>
+
+    <!-- Zoom/automation row. AUTO ZOOM is on by default; +/- becomes manual override. -->
+    <LinearLayout
+        android:id="@+id/zoomBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#DD111111"
+        android:padding="4dp"
+        app:layout_constraintBottom_toTopOf="@id/controlBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ToggleButton
+            android:id="@+id/autoZoomToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textOn="ZOOM AUTO"
+            android:textOff="ZOOM MAN"
+            android:textSize="9sp" />
+
+        <Button
+            android:id="@+id/zoomMinus"
+            android:layout_width="44dp"
+            android:layout_height="wrap_content"
+            android:text="−"
+            android:textSize="18sp" />
+
+        <TextView
+            android:id="@+id/zoomText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="1.00x AUTO"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/zoomPlus"
+            android:layout_width="44dp"
+            android:layout_height="wrap_content"
+            android:text="+"
+            android:textSize="18sp" />
+
+        <ToggleButton
+            android:id="@+id/autoRoiToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textOn="ROI AUTO"
+            android:textOff="ROI MAN"
+            android:textSize="9sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/controlBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#DD222222"
+        android:padding="5dp"
+        android:gravity="center_vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <Spinner
+            android:id="@+id/cameraSpinner"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <ToggleButton android:id="@+id/focusLockToggle"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textOn="FOCUS LOCK" android:textOff="FOCUS AUTO" android:textSize="8sp" />
+
+        <ToggleButton android:id="@+id/exposureLockToggle"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textOn="EXP LOCK" android:textOff="EXP AUTO" android:textSize="8sp" />
+
+        <ToggleButton android:id="@+id/debugToggle"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textOn="DEBUG ON" android:textOff="DEBUG OFF" android:textSize="8sp" />
+
+        <Button android:id="@+id/recordButton"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="RECORD" android:backgroundTint="#D32F2F" android:textColor="#FFFFFF" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
