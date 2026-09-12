@@ -11,8 +11,8 @@ android {
         applicationId = "com.mirage.app"
         minSdk = 26   // Camera2 manual focus/exposure controls need API 23+; 26 keeps things simpler
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.5-target-hud-display"
+        versionCode = 6
+        versionName = "0.6-field-visualizer"
     }
 
     buildTypes {

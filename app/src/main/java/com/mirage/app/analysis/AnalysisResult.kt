@@ -81,7 +81,16 @@ data class AnalysisResult(
     val mirageStableForSec: Double,
     /** 0..1 composite score used by AUTO ZOOM to choose the clearest view. */
     val signalScore: Double,
+    val sceneLuma: Double = 128.0,
 
     // Secondary visual wind indicators
-    val motionCues: List<MotionCue>
+    val motionCues: List<MotionCue>,
+
+    // Experimental centre-target interpretation. Labels are deliberately conservative.
+    val targetLabel: String = "",
+    val targetConfidence: Double = 0.0,
+    val targetLeftPx: Int = 0,
+    val targetTopPx: Int = 0,
+    val targetRightPx: Int = 0,
+    val targetBottomPx: Int = 0
 )

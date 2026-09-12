@@ -33,6 +33,7 @@ class FrameAnalyzer(
     private val textureVariance = TextureVarianceExtractor()
     private val frequencyDomain = FrequencyDomainExtractor()
     private val motionCueDetector = MotionCueDetector()
+    private val centerTargetDetector = CenterTargetDetector()
 
     private var lastAnalyzedNs = 0L
     @Volatile private var targetHz: Double = targetHz
@@ -141,6 +142,8 @@ class FrameAnalyzer(
                 sufficientSignal, mirageClockAngle, bmResult.magnitude, cameraTimestampNs
             )
 
+            val target = if (!stabInfo.disturbance) centerTargetDetector.detect(stabilizedU8) else null
+
             val result = AnalysisResult(
                 cameraFrameTimestampNs = cameraTimestampNs,
                 wallClockElapsedRealtimeNs = SystemClock.elapsedRealtimeNanos(),
@@ -178,7 +181,14 @@ class FrameAnalyzer(
                 mirageStable = mirageStable,
                 mirageStableForSec = mirageStableFor,
                 signalScore = signalScore,
-                motionCues = motionCues
+                sceneLuma = Core.mean(stabilizedU8).`val`[0],
+                motionCues = motionCues,
+                targetLabel = target?.label ?: "",
+                targetConfidence = target?.confidence ?: 0.0,
+                targetLeftPx = target?.rect?.x ?: 0,
+                targetTopPx = target?.rect?.y ?: 0,
+                targetRightPx = target?.rect?.let { it.x + it.width } ?: 0,
+                targetBottomPx = target?.rect?.let { it.y + it.height } ?: 0
             )
             onResult(result, image)
 

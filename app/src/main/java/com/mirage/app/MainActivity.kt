@@ -1,6 +1,9 @@
 package com.mirage.app
 
 import android.content.pm.PackageManager
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.graphics.RectF
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -110,6 +113,7 @@ class MainActivity : AppCompatActivity() {
     private var zoomCandidateStartedMs = 0L
     private var nextAutoZoomSweepMs = 0L
     private var currentSignalScore = 0.0
+    private var lastBatteryTempUpdateMs = 0L
 
     private val sessionTimeoutRunnable = Runnable {
         if (!waitingForManualResume) stopForSafety(
@@ -130,6 +134,15 @@ class MainActivity : AppCompatActivity() {
             }
             mainHandler.postDelayed(this, storageCheckIntervalMs)
         }
+    }
+
+    private val requestLocationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val ok = grants[android.Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            grants[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (ok) { startLocationUpdates(); binding.locationButton.text = "GPS ON" }
+        else Toast.makeText(this, "Location is optional; range assist will stay limited.", Toast.LENGTH_LONG).show()
     }
 
     private val requestPermissions = registerForActivityResult(
@@ -156,16 +169,18 @@ class MainActivity : AppCompatActivity() {
 
         setupRangeAssist()
         setupDisplayControls()
+        binding.locationButton.setOnClickListener {
+            val fine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val coarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            if (fine || coarse) { startLocationUpdates(); binding.locationButton.text = "GPS ON" }
+            else requestLocationPermission.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
 
         val needed = listOf(
             android.Manifest.permission.CAMERA,
-            android.Manifest.permission.RECORD_AUDIO,
-            android.Manifest.permission.ACCESS_FINE_LOCATION,
-            android.Manifest.permission.ACCESS_COARSE_LOCATION
+            android.Manifest.permission.RECORD_AUDIO
         ).filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (needed.isEmpty()) {
-            initCameraOnceOpenCvReady(); startLocationUpdates()
-        } else requestPermissions.launch(needed.toTypedArray())
+        if (needed.isEmpty()) initCameraOnceOpenCvReady() else requestPermissions.launch(needed.toTypedArray())
 
         binding.debugToggle.setOnCheckedChangeListener { _, checked ->
             binding.debugOverlay.visibility = if (checked) View.VISIBLE else View.GONE
@@ -236,6 +251,22 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun updateBatteryTemperature() {
+        val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return
+        val raw = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
+        if (raw != Int.MIN_VALUE && ::binding.isInitialized) {
+            val c = raw / 10.0
+            binding.temperatureText.text = "%.1f°C".format(c)
+        }
+    }
+
+    private fun thermalLabel(status: Int): String = when {
+        status >= PowerManager.THERMAL_STATUS_SEVERE -> "TEMP HOT"
+        status >= PowerManager.THERMAL_STATUS_MODERATE -> "TEMP WARM"
+        status >= PowerManager.THERMAL_STATUS_LIGHT -> "TEMP +"
+        else -> "TEMP OK"
     }
 
     private fun stopForSafety(message: String, resumeAllowed: Boolean, toastMessage: String) {
@@ -322,6 +353,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun onAnalysisResult(raw: AnalysisResult) {
         currentSignalScore = raw.signalScore
+        val tempNow = SystemClock.elapsedRealtime()
+        if (tempNow - lastBatteryTempUpdateMs >= 1500L) {
+            lastBatteryTempUpdateMs = tempNow
+            updateBatteryTemperature()
+        }
 
         val rangeCtx = currentRangeContext()
         val enrichedCues = raw.motionCues.map {
@@ -355,14 +391,14 @@ class MainActivity : AppCompatActivity() {
         val status = when {
             r.mirageStable -> "● STABLE MIRAGE — ${r.mirageClockDirection}"
             bestCue?.stable == true -> "● STABLE ${bestCue.label} — ${bestCue.clockDirection}"
-            r.sufficientSignal -> "MIRAGE DETECTED — ${r.mirageClockDirection}"
-            bestCue != null -> "VISUAL WIND CUE — ${bestCue.label}"
+            r.sufficientSignal -> "● CHANGING MIRAGE — ${r.mirageClockDirection}"
+            bestCue != null -> "● CHANGING — ${bestCue.label}"
             else -> "SEARCHING — INSUFFICIENT SIGNAL"
         }
         binding.signalQualityText.text = if (warm) "WARM 3 Hz | $status" else status
         binding.signalQualityText.setBackgroundColor(when {
             r.mirageStable || bestCue?.stable == true -> 0xAA087A22.toInt()
-            r.sufficientSignal || bestCue != null -> 0xAA8A6500.toInt()
+            r.sufficientSignal || bestCue != null -> 0xAAAA0000.toInt()
             else -> 0x88AA0000.toInt()
         })
 
@@ -436,17 +472,15 @@ class MainActivity : AppCompatActivity() {
         val mag = cameraHeadingDeg
         val trueAz = mag?.let { normalizeDeg(it + magneticDeclinationDeg()) }
         val compass = trueAz?.let { compassPoint(it) } ?: "--"
-        val magText = mag?.let { "%03.0f°M".format(it) } ?: "--"
-        val azText = trueAz?.let { "%03.0f°T".format(it) } ?: "--"
+        val azText = trueAz?.let { "%03.0f°".format(it) } ?: "--"
         val pitchText = cameraPitchDeg?.let { "%+.1f°".format(it) } ?: "--"
         val rangeText = range.meters?.let { "%.0fm".format(it) } ?: "--"
 
-        binding.navRangeText.text = "AZ $azText  INC $pitchText  R $rangeText"
+        binding.navRangeText.text = "AZ $azText  ANGLE $pitchText  RANGE $rangeText"
         binding.targetHudText.text = buildString {
             appendLine("AZ $azText  $compass")
-            appendLine("MAG $magText")
-            appendLine("INC $pitchText")
-            append("RNG $rangeText")
+            appendLine("ANGLE $pitchText")
+            append("RANGE $rangeText")
         }
     }
 
