@@ -3,6 +3,7 @@ package com.mirage.app
 import android.content.pm.PackageManager
 import android.content.Intent
 import android.content.IntentFilter
+import android.speech.RecognizerIntent
 import android.os.BatteryManager
 import android.graphics.RectF
 import android.hardware.Sensor
@@ -13,6 +14,7 @@ import android.hardware.GeomagneticField
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -20,9 +22,10 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Size
 import android.view.View
+import android.view.ScaleGestureDetector
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.SeekBar
-import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -35,6 +38,7 @@ import com.mirage.app.analysis.RangeEstimator
 import com.mirage.app.camera.CameraController
 import com.mirage.app.databinding.ActivityMainBinding
 import com.mirage.app.logging.SessionRecorder
+import com.mirage.app.logging.UserFeedbackLogger
 import kotlin.math.max
 
 class MainActivity : AppCompatActivity() {
@@ -43,9 +47,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraController: CameraController
     private var frameAnalyzer: FrameAnalyzer? = null
     private var sessionRecorder: SessionRecorder? = null
+    private lateinit var feedbackLogger: UserFeedbackLogger
+    private var latestAnalysisResult: AnalysisResult? = null
 
-    // RANGE ASSIST: orientation is always local-only; location is optional and used only for
-    // sea-level intersection. No internet permission is declared.
+    // RANGE ASSIST: orientation is local; location is optional. Cloud Vision uses internet only
+    // for rare fallback object-label checks when local recognition is uncertain.
     private lateinit var sensorManager: SensorManager
     private var rotationSensor: Sensor? = null
     private var lightSensor: Sensor? = null
@@ -56,6 +62,10 @@ class MainActivity : AppCompatActivity() {
     private var cameraPitchDeg: Double? = null
     private var locationManager: LocationManager? = null
     private var lastLocation: Location? = null
+    private var locationEnabled = false
+    private var batteryTempC: Double? = null
+    private var batteryHeatShutdown = false
+    private var scaleDetector: ScaleGestureDetector? = null
 
     private val orientationListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
@@ -75,6 +85,7 @@ class MainActivity : AppCompatActivity() {
         override fun onSensorChanged(event: SensorEvent) {
             val lux = event.values.firstOrNull() ?: return
             lastAmbientLux = lux
+            frameAnalyzer?.setAmbientLux(lux)
             if (autoBrightnessEnabled) applyAutoBrightness(lux)
         }
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -141,8 +152,8 @@ class MainActivity : AppCompatActivity() {
     ) { grants ->
         val ok = grants[android.Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             grants[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (ok) { startLocationUpdates(); binding.locationButton.text = "GPS ON" }
-        else Toast.makeText(this, "Location is optional; range assist will stay limited.", Toast.LENGTH_LONG).show()
+        if (ok) { locationEnabled = true; startLocationUpdates(); binding.locationButton.text = "GPS ON" }
+        else { locationEnabled = false; binding.locationButton.text = "GPS OFF"; Toast.makeText(this, "Location is optional; range assist will stay limited.", Toast.LENGTH_LONG).show() }
     }
 
     private val requestPermissions = registerForActivityResult(
@@ -152,6 +163,16 @@ class MainActivity : AppCompatActivity() {
         else Toast.makeText(this, "Camera permission is required.", Toast.LENGTH_LONG).show()
         if (grants[android.Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             grants[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true) startLocationUpdates()
+    }
+
+    private val voiceZoomLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode != android.app.Activity.RESULT_OK) return@registerForActivityResult
+        val heard = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.lowercase() ?: return@registerForActivityResult
+        when {
+            "increase magnification" in heard || "zoom in" in heard || "increase zoom" in heard -> manualZoom(+1)
+            "decrease magnification" in heard || "zoom out" in heard || "decrease zoom" in heard -> manualZoom(-1)
+            else -> Toast.makeText(this, "Say: increase magnification or decrease magnification", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -166,14 +187,24 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "OpenCV failed to load -- cannot continue.", Toast.LENGTH_LONG).show()
         }
         cameraController = CameraController(this, this)
+        feedbackLogger = UserFeedbackLogger(this)
+        setupFeedbackControls()
+        setupCloudUsageControls()
 
         setupRangeAssist()
         setupDisplayControls()
+        binding.locationButton.text = "GPS OFF"
         binding.locationButton.setOnClickListener {
-            val fine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val coarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            if (fine || coarse) { startLocationUpdates(); binding.locationButton.text = "GPS ON" }
-            else requestLocationPermission.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+            if (locationEnabled) {
+                stopLocationUpdates()
+                locationEnabled = false
+                binding.locationButton.text = "GPS OFF"
+            } else {
+                val fine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                val coarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                if (fine || coarse) { locationEnabled = true; startLocationUpdates(); binding.locationButton.text = "GPS ON" }
+                else requestLocationPermission.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+            }
         }
 
         val needed = listOf(
@@ -205,6 +236,8 @@ class MainActivity : AppCompatActivity() {
         }
         binding.zoomPlus.setOnClickListener { manualZoom(+1) }
         binding.zoomMinus.setOnClickListener { manualZoom(-1) }
+        binding.voiceZoomButton.setOnClickListener { startVoiceZoom() }
+        setupPinchZoom()
 
         installThermalProtection()
     }
@@ -258,7 +291,33 @@ class MainActivity : AppCompatActivity() {
         val raw = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
         if (raw != Int.MIN_VALUE && ::binding.isInitialized) {
             val c = raw / 10.0
-            binding.temperatureText.text = "%.1f°C".format(c)
+            batteryTempC = c
+            binding.temperatureText.text = "BATTERY TEMP %.1f°C".format(c)
+            applyBatteryHeatPolicy(c)
+        }
+    }
+
+    private fun applyBatteryHeatPolicy(c: Double) {
+        if (waitingForManualResume) {
+            if (batteryHeatShutdown && c <= 36.5) {
+                binding.resumeButton.isEnabled = true
+                binding.signalQualityText.text = "BATTERY COOLED — TAP RESUME"
+            }
+            return
+        }
+        when {
+            c >= 38.0 -> {
+                batteryHeatShutdown = true
+                stopForSafety("BATTERY HOT — COOL PHONE", false,
+                    "Battery reached %.1f°C. Camera and analysis stopped to reduce heat.".format(c))
+            }
+            c >= 37.0 -> frameAnalyzer?.setTargetHz(2.0)
+            c >= 36.0 -> frameAnalyzer?.setTargetHz(4.0)
+            else -> {
+                val warm = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
+                    currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
+                frameAnalyzer?.setTargetHz(if (warm) reducedAnalysisHz else normalAnalysisHz)
+            }
         }
     }
 
@@ -284,7 +343,10 @@ class MainActivity : AppCompatActivity() {
             thermalShutdown && currentThermalStatus > PowerManager.THERMAL_STATUS_MODERATE) {
             Toast.makeText(this, "Phone is still too hot. Let it cool before resuming.", Toast.LENGTH_LONG).show(); return
         }
-        waitingForManualResume = false; thermalShutdown = false
+        if (batteryHeatShutdown && (batteryTempC ?: 99.0) > 36.5) {
+            Toast.makeText(this, "Battery is still above 36.5°C. Let it cool before resuming.", Toast.LENGTH_LONG).show(); return
+        }
+        waitingForManualResume = false; thermalShutdown = false; batteryHeatShutdown = false
         binding.resumeButton.visibility = View.GONE; binding.resumeButton.isEnabled = false
         binding.recordButton.isEnabled = true
         binding.signalQualityText.text = "RESTARTING CAMERA..."
@@ -320,9 +382,14 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun attachAnalyzer(analysis: ImageAnalysis) {
-        val initialHz = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
-            currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE) reducedAnalysisHz else normalAnalysisHz
+        val initialHz = when {
+            (batteryTempC ?: 0.0) >= 37.0 -> 2.0
+            (batteryTempC ?: 0.0) >= 36.0 -> 4.0
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE -> reducedAnalysisHz
+            else -> normalAnalysisHz
+        }
         val analyzer = FrameAnalyzer(
+            context = applicationContext,
             targetHz = initialHz,
             roiSupplier = { analysisW, analysisH ->
                 val mapper = CoordinateMapper(binding.previewView.width, binding.previewView.height, analysisW, analysisH)
@@ -331,6 +398,7 @@ class MainActivity : AppCompatActivity() {
             onResult = { result, _ -> runOnUiThread { onAnalysisResult(result) } }
         )
         analyzer.setAutoRoiEnabled(binding.autoRoiToggle.isChecked)
+        analyzer.setAmbientLux(lastAmbientLux)
         frameAnalyzer = analyzer
         analysis.setAnalyzer(cameraController.analysisExecutor, analyzer)
         binding.roiOverlay.onRoiChanged = { frameAnalyzer?.resetForNewRoi() }
@@ -349,6 +417,7 @@ class MainActivity : AppCompatActivity() {
             RangeEstimator.enrich(it, raw.fullWidthPx, rangeCtx)
         }
         val r = raw.copy(motionCues = enrichedCues)
+        latestAnalysisResult = r
         binding.windCueOverlay.update(r)
 
         val range = RangeEstimator.distance(rangeCtx)
@@ -374,11 +443,11 @@ class MainActivity : AppCompatActivity() {
         val warm = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
             currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
         val status = when {
-            r.mirageStable -> "● STABLE MIRAGE — ${r.mirageClockDirection}"
-            bestCue?.stable == true -> "● STABLE ${bestCue.label} — ${bestCue.clockDirection}"
-            r.sufficientSignal -> "● CHANGING MIRAGE — ${r.mirageClockDirection}"
-            bestCue != null -> "● CHANGING — ${bestCue.label}"
-            else -> "SEARCHING — INSUFFICIENT SIGNAL"
+            r.mirageStable -> "● STABLE MIRAGE • ${r.mirageClockDirection}"
+            bestCue?.stable == true -> "● STABLE WIND • ${bestCue.label} • ${bestCue.clockDirection} • %.1f–%.1f m/s EST".format(bestCue.estimatedWindMinMps, bestCue.estimatedWindMaxMps)
+            r.sufficientSignal -> "● CHANGING MIRAGE • ${r.mirageClockDirection}"
+            bestCue != null -> "● CHANGING WIND • ${bestCue.label} • ${bestCue.clockDirection} • %.1f–%.1f m/s EST".format(bestCue.estimatedWindMinMps, bestCue.estimatedWindMaxMps)
+            else -> "NO MIRAGE DETECTED • NO RELIABLE WIND CUE"
         }
         binding.signalQualityText.text = if (warm) "WARM 3 Hz | $status" else status
         binding.signalQualityText.setBackgroundColor(when {
@@ -397,6 +466,67 @@ class MainActivity : AppCompatActivity() {
         }
         handleAutoZoom(r)
         sessionRecorder?.logResult(r)
+        updateCloudUsageUi()
+    }
+
+
+    private fun setupCloudUsageControls() {
+        binding.cloudUsageButton.setOnClickListener {
+            updateCloudUsageUi()
+            binding.cloudUsagePanel.visibility = View.VISIBLE
+        }
+        binding.closeCloudUsageButton.setOnClickListener {
+            binding.cloudUsagePanel.visibility = View.GONE
+        }
+        binding.openCloudConsoleButton.setOnClickListener {
+            val url = "https://console.cloud.google.com/apis/api/vision.googleapis.com/metrics?project=project-d7481617-c36b-4977-b8f"
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            } catch (_: Throwable) {
+                Toast.makeText(this, "Could not open Google Cloud Console.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        updateCloudUsageUi()
+    }
+
+    private fun updateCloudUsageUi() {
+        if (!::binding.isInitialized) return
+        val analyzer = frameAnalyzer
+        if (analyzer == null) {
+            binding.cloudCounterText.text = "CLOUD -- SESSION • --/30 TODAY • --/900 MONTH"
+            binding.cloudUsageText.text = "Cloud AI initializes with the camera.\nDaily limit: 30\nMonthly device limit: 900\nEstimated device cost: €0.00"
+            return
+        }
+        val q = analyzer.cloudQuota()
+        val configured = analyzer.cloudConfigured()
+        val last = analyzer.latestCloudPrediction()
+        binding.cloudCounterText.text = "CLOUD ${q.sessionUsed} SESSION • ${q.dayUsed}/${q.dayLimit} TODAY • ${q.monthUsed}/${q.monthLimit} MONTH"
+        val status = if (configured) "READY" else "DISABLED — API KEY NOT IN BUILD"
+        val lastText = last?.let { "${it.label} (${(it.confidence * 100).toInt()}%)" } ?: "none yet"
+        binding.cloudUsageText.text = buildString {
+            appendLine("Cloud AI: $status")
+            appendLine("Session requests: ${q.sessionUsed}")
+            appendLine("Today: ${q.dayUsed} / ${q.dayLimit}")
+            appendLine("This device this month: ${q.monthUsed} / ${q.monthLimit}")
+            appendLine("Last cloud label: $lastText")
+            append("Estimated device cost: €0.00 while project remains inside Google's free allowance")
+        }
+    }
+
+    private fun setupFeedbackControls() {
+        binding.feedbackAgree.setOnClickListener { recordOperatorFeedback(UserFeedbackLogger.Vote.AGREE) }
+        binding.feedbackUnsure.setOnClickListener { recordOperatorFeedback(UserFeedbackLogger.Vote.NOT_SURE) }
+        binding.feedbackDisagree.setOnClickListener { recordOperatorFeedback(UserFeedbackLogger.Vote.DISAGREE) }
+    }
+
+    private fun recordOperatorFeedback(vote: UserFeedbackLogger.Vote) {
+        val file = feedbackLogger.record(vote, latestAnalysisResult)
+        val label = when (vote) {
+            UserFeedbackLogger.Vote.AGREE -> "AGREE"
+            UserFeedbackLogger.Vote.NOT_SURE -> "NOT SURE"
+            UserFeedbackLogger.Vote.DISAGREE -> "DISAGREE"
+        }
+        Toast.makeText(this, "$label recorded for testing", Toast.LENGTH_SHORT).show()
     }
 
     private fun setupRangeAssist() {
@@ -419,6 +549,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startLocationUpdates() {
+        locationEnabled = true
+        if (::binding.isInitialized) binding.locationButton.text = "GPS ON"
         val fine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val coarse = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (!fine && !coarse) return
@@ -434,6 +566,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } catch (_: SecurityException) { }
+    }
+
+
+    private fun stopLocationUpdates() {
+        try { locationManager?.removeUpdates(locationListener) } catch (_: SecurityException) { }
+        lastLocation = null
+        updateNavigationReadout()
     }
 
     private fun currentRangeContext(): RangeEstimator.Context {
@@ -462,11 +601,7 @@ class MainActivity : AppCompatActivity() {
         val rangeText = range.meters?.let { "%.0fm".format(it) } ?: "--"
 
         binding.navRangeText.text = "AZ $azText  ANGLE $pitchText  RANGE $rangeText"
-        binding.targetHudText.text = buildString {
-            appendLine("AZ $azText  $compass")
-            appendLine("ANGLE $pitchText")
-            append("RANGE $rangeText")
-        }
+        binding.targetHudText.text = "AZ $azText  $compass   ANGLE $pitchText   RANGE $rangeText"
     }
 
     private fun magneticDeclinationDeg(): Double {
@@ -536,6 +671,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun thermallyCappedBrightness(requested: Int): Int {
+        val bt = batteryTempC ?: 0.0
+        if (bt >= 37.0) return requested.coerceAtMost(55)
+        if (bt >= 36.0) return requested.coerceAtMost(70)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             if (currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) return requested.coerceAtMost(40)
             if (currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE) return requested.coerceAtMost(70)
@@ -566,6 +704,39 @@ class MainActivity : AppCompatActivity() {
         val ox = (vw - r.fullWidthPx * scale) / 2f; val oy = (vh - r.fullHeightPx * scale) / 2f
         return RectF(ox + r.roiLeftPx * scale, oy + r.roiTopPx * scale,
             ox + (r.roiLeftPx + r.roiWidthPx) * scale, oy + (r.roiTopPx + r.roiHeightPx) * scale)
+    }
+
+    private fun setupPinchZoom() {
+        scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                if (!::cameraController.isInitialized) return false
+                if (autoZoomEnabled) binding.autoZoomToggle.isChecked = false
+                val (minZ,maxZ)=cameraController.zoomRange()
+                val next=(cameraController.currentZoomRatio()*detector.scaleFactor).coerceIn(minZ,maxZ)
+                cameraController.setZoomRatio(next)
+                updateZoomText()
+                frameAnalyzer?.resetForNewRoi()
+                return true
+            }
+        })
+        binding.previewView.setOnTouchListener { _, event ->
+            scaleDetector?.onTouchEvent(event)
+            true
+        }
+    }
+
+    private fun startVoiceZoom() {
+        try {
+            val intent=Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Say increase magnification or decrease magnification")
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            }
+            voiceZoomLauncher.launch(intent)
+        } catch (_: Throwable) {
+            Toast.makeText(this, "Voice recognition is not available on this phone.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun beginAutoZoomSweep() {
@@ -642,11 +813,11 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Recording not started: keep at least 500 MB free.", Toast.LENGTH_LONG).show(); return
         }
         val recorder = SessionRecorder(this); sessionRecorder = recorder
-        cameraController.startRecording(recorder.videoFile) { success, error ->
+        cameraController.startRecordingToGallery { success, error, savedLocation ->
             recorder.finish(success, error)
             runOnUiThread {
                 stopStorageChecks(); binding.recordButton.text = "RECORD"
-                Toast.makeText(this, if (success) "Saved: ${recorder.sessionDir}" else "Recording error: $error", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, if (success) "Video saved in Camera: ${savedLocation ?: "Mirage recording"}" else "Recording error: $error", Toast.LENGTH_LONG).show()
             }
             sessionRecorder = null
         }

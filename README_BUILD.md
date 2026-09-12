@@ -107,3 +107,7 @@ None of these change what a measurement *means* — they're implementation
 details of how the same definition gets computed. If a field-test
 comparison against the desktop tool shows a meaningful discrepancy beyond
 these notes, that's useful data, not something to paper over.
+
+
+## Optional cloud recognition (v0.63)
+To enable the low-volume Google Cloud Vision fallback, add a GitHub repository secret named `CLOUD_VISION_API_KEY`. The workflow passes it to Gradle at build time. Without the secret, the APK still builds and runs using only local recognition. See `V063_NOTES.md` for quota safeguards.

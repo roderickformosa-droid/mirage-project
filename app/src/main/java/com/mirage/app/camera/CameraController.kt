@@ -1,6 +1,10 @@
 package com.mirage.app.camera
 
 import android.content.Context
+import android.content.ContentValues
+import android.net.Uri
+import android.provider.MediaStore
+import android.os.Build
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
@@ -216,6 +220,35 @@ class CameraController(
                         }
                     }
                     else -> { /* Start/Status/Pause events -- nothing needed here */ }
+                }
+            }
+    }
+
+    fun startRecordingToGallery(onFinalized: (Boolean, String?, String?) -> Unit) {
+        val videoCap = videoCapture ?: return
+        val name = "Mirage_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.mp4"
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, name)
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, "DCIM/Camera")
+            }
+        }
+        val outputOptions = MediaStoreOutputOptions.Builder(
+            context.contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        ).setContentValues(values).build()
+
+        activeRecording = videoCap.output
+            .prepareRecording(context, outputOptions)
+            .apply { withAudioEnabled() }
+            .start(mainExecutor) { event ->
+                if (event is VideoRecordEvent.Finalize) {
+                    if (event.hasError()) {
+                        Log.e("CameraController", "Recording error: ${event.error}")
+                        onFinalized(false, event.cause?.message, null)
+                    } else {
+                        onFinalized(true, null, event.outputResults.outputUri.toString())
+                    }
                 }
             }
     }

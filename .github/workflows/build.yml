@@ -1,6 +1,8 @@
 name: Build APK
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -22,6 +24,8 @@ jobs:
           gradle-version: '8.7'
 
       - name: Build debug APK
+        env:
+          CLOUD_VISION_API_KEY: ${{ secrets.CLOUD_VISION_API_KEY }}
         run: gradle assembleDebug --stacktrace
 
       - name: Rename output
