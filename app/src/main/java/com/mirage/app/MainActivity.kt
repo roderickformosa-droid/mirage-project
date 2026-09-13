@@ -56,6 +56,8 @@ class MainActivity : AppCompatActivity() {
     private var publishedWindResult: AnalysisResult? = null
     private var lastWindPublishMs = 0L
     private var lastFeedbackVotePublishMs = -1L
+    private var directionFeedbackForPublish: String? = null
+    private var speedFeedbackForPublish: String? = null
     private var lastAnalysisReceivedMs = 0L
     private var analysisWatchStartedMs = 0L
     private var lastAutomaticCameraRestartMs = 0L
@@ -497,13 +499,15 @@ class MainActivity : AppCompatActivity() {
         if (publishable && tempNow - lastWindPublishMs >= 3000L) {
             publishedWindResult = r
             lastWindPublishMs = tempNow
+            directionFeedbackForPublish = null
+            speedFeedbackForPublish = null
         }
 
         val published = publishedWindResult
         val freshPublished = published != null && tempNow - lastWindPublishMs <= 6000L
         if (publishable && published != null) {
             showPublishedWind(published, current = true)
-            binding.feedbackPanel.visibility = if (lastFeedbackVotePublishMs == lastWindPublishMs) View.GONE else View.VISIBLE
+            binding.feedbackPanel.visibility = if (directionFeedbackForPublish != null && speedFeedbackForPublish != null) View.GONE else View.VISIBLE
         } else if (freshPublished && published != null) {
             showPublishedWind(published, current = false)
             binding.feedbackPanel.visibility = View.GONE
@@ -546,13 +550,16 @@ class MainActivity : AppCompatActivity() {
         val changing = r.aggregateWindState == "CHANGING"
         val side = windSideLabel(r.aggregateWindClockDirection)
         val going = windGoingLabel(r.aggregateWindClockDirection)
-        val (lowMph, highMph) = mphBracket(r.aggregateWindMinMps, r.aggregateWindMaxMps)
+        val speedReady = speedEvidenceReady(r)
 
         binding.resultCard.visibility = View.VISIBLE
         binding.windVisualPanel.visibility = View.VISIBLE
         binding.windArrowText.visibility = View.VISIBLE
         binding.windArrowText.text = arrow
-        binding.windDetailText.text = "$lowMph–$highMph mph EST."
+        binding.windDetailText.text = if (speedReady) mphDisplay(r.aggregateWindMinMps, r.aggregateWindMaxMps) else "SPEED LEARNING…"
+        binding.feedbackSpeedLower.isEnabled = speedReady
+        binding.feedbackSpeedOk.isEnabled = speedReady
+        binding.feedbackSpeedHigher.isEnabled = speedReady
         binding.windSideText.text = "$side • $going"
         binding.cueEvidenceText.text = cueEvidenceLabel(r.aggregateWindSources, r.sufficientSignal)
         binding.resultMessageText.text = when {
@@ -593,12 +600,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Two-mile-per-hour field bracket, always marked EST. to avoid false precision. */
-    private fun mphBracket(minMps: Double, maxMps: Double): Pair<Int, Int> {
-        val midpointMph = ((minMps + maxMps) * 0.5 * 2.236936).coerceAtLeast(0.0)
-        val center = kotlin.math.round(midpointMph).toInt()
-        val low = maxOf(0, center - 1)
-        return low to (low + 2)
+    /**
+     * v0.72 field display: never wider than a 2 mph bracket. Above the useful visual range,
+     * do not invent precision: show 12+ mph.
+     */
+    private fun mphDisplay(minMps: Double, maxMps: Double): String {
+        val minMph = minMps * 2.236936
+        val maxMph = maxMps * 2.236936
+        val midpointMph = ((minMph + maxMph) * 0.5).coerceAtLeast(0.0)
+        if (maxMph >= 12.5 || midpointMph >= 12.0) return "12+ mph EST."
+        val center = kotlin.math.round(midpointMph).toInt().coerceIn(1, 11)
+        var low = maxOf(0, center - 1)
+        var high = low + 2
+        if (high > 12) { high = 12; low = 10 }
+        return "$low–$high mph EST."
+    }
+
+    /**
+     * A numeric speed bracket is withheld until a recognised visual cue has been stable long
+     * enough to support a temporal estimate. Direction can still be displayed earlier.
+     */
+    private fun speedEvidenceReady(r: AnalysisResult): Boolean {
+        val stableObject = r.motionCues.any {
+            it.stableForSec >= 3.0 && (
+                it.label.contains("FLAG", true) || it.label.contains("FABRIC", true) ||
+                it.label.contains("FOLIAGE", true) || it.label.contains("LEAF", true) ||
+                it.label.contains("GRASS", true) || it.label.contains("TWIG", true) ||
+                it.label.contains("BRANCH", true) || it.label.contains("SMOKE", true)
+            )
+        }
+        val stableMirage = r.mirageStable && r.mirageStableForSec >= 3.0
+        return r.learningPercent >= 55 && r.aggregateWindMaxMps > 0.0 && (stableObject || stableMirage)
     }
 
     /** "Right wind" means the observed flow is travelling from right toward left. */
@@ -667,6 +699,8 @@ class MainActivity : AppCompatActivity() {
             frameAnalyzer?.setOpticalModeOverride(opticalOverride)
             publishedWindResult = null
             lastWindPublishMs = 0L
+            directionFeedbackForPublish = null
+            speedFeedbackForPublish = null
             binding.feedbackPanel.visibility = View.GONE
             updateButton()
         }
@@ -716,21 +750,42 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupFeedbackControls() {
-        binding.feedbackAgree.setOnClickListener { recordOperatorFeedback(UserFeedbackLogger.Vote.AGREE) }
-        binding.feedbackUnsure.setOnClickListener { recordOperatorFeedback(UserFeedbackLogger.Vote.NOT_SURE) }
-        binding.feedbackDisagree.setOnClickListener { recordOperatorFeedback(UserFeedbackLogger.Vote.DISAGREE) }
+        binding.feedbackDirectionYes.setOnClickListener { recordDirectionFeedback("YES") }
+        binding.feedbackDirectionNo.setOnClickListener { recordDirectionFeedback("NO") }
+        binding.feedbackSpeedLower.setOnClickListener { recordSpeedFeedback("LOWER") }
+        binding.feedbackSpeedOk.setOnClickListener { recordSpeedFeedback("OK") }
+        binding.feedbackSpeedHigher.setOnClickListener { recordSpeedFeedback("HIGHER") }
     }
 
-    private fun recordOperatorFeedback(vote: UserFeedbackLogger.Vote) {
-        val file = feedbackLogger.record(vote, publishedWindResult ?: latestAnalysisResult)
+    private fun recordDirectionFeedback(value: String) {
+        directionFeedbackForPublish = value
+        feedbackLogger.recordFieldFeedback(
+            vote = "CALIBRATION",
+            directionFeedback = value,
+            speedFeedback = speedFeedbackForPublish ?: "",
+            r = publishedWindResult ?: latestAnalysisResult
+        )
+        Toast.makeText(this, "Direction feedback: $value", Toast.LENGTH_SHORT).show()
+        updateFeedbackPanelAfterVote()
+    }
+
+    private fun recordSpeedFeedback(value: String) {
+        speedFeedbackForPublish = value
+        feedbackLogger.recordFieldFeedback(
+            vote = "CALIBRATION",
+            directionFeedback = directionFeedbackForPublish ?: "",
+            speedFeedback = value,
+            r = publishedWindResult ?: latestAnalysisResult
+        )
+        Toast.makeText(this, "Wind speed feedback: $value", Toast.LENGTH_SHORT).show()
+        updateFeedbackPanelAfterVote()
+    }
+
+    private fun updateFeedbackPanelAfterVote() {
         lastFeedbackVotePublishMs = lastWindPublishMs
-        binding.feedbackPanel.visibility = View.GONE
-        val label = when (vote) {
-            UserFeedbackLogger.Vote.AGREE -> "AGREE"
-            UserFeedbackLogger.Vote.NOT_SURE -> "NOT SURE"
-            UserFeedbackLogger.Vote.DISAGREE -> "DISAGREE"
+        if (directionFeedbackForPublish != null && speedFeedbackForPublish != null) {
+            binding.feedbackPanel.visibility = View.GONE
         }
-        Toast.makeText(this, "$label recorded for testing", Toast.LENGTH_SHORT).show()
     }
 
     private fun setupRangeAssist() {

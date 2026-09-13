@@ -24,7 +24,7 @@ class UserFeedbackLogger(context: Context) {
         if (!outputFile.exists() || outputFile.length() == 0L) {
             outputFile.appendText(
                 listOf(
-                    "timestamp_local", "device", "vote",
+                    "timestamp_local", "device", "vote", "direction_feedback", "speed_feedback",
                     "mirage_detected", "mirage_direction", "mirage_stable", "mirage_stable_sec",
                     "cue_label", "cue_direction", "cue_wind_min_mps", "cue_wind_max_mps",
                     "cue_confidence", "cue_stable", "cue_stable_sec",
@@ -36,12 +36,18 @@ class UserFeedbackLogger(context: Context) {
         }
     }
 
-    fun record(vote: Vote, r: AnalysisResult?): File {
+    fun record(vote: Vote, r: AnalysisResult?): File = recordFieldFeedback(vote.name, "", "", r)
+
+    /**
+     * v0.72 calibration feedback. This is deliberately logged only; it never modifies the live
+     * estimate. Direction and speed feedback can later be compared with the captured algorithm state.
+     */
+    fun recordFieldFeedback(vote: String, directionFeedback: String, speedFeedback: String, r: AnalysisResult?): File {
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
         val device = "${Build.MANUFACTURER} ${Build.MODEL}".csv()
         val cue = r?.motionCues?.maxByOrNull { it.confidence }
         val row = listOf(
-            timestamp.csv(), device, vote.name,
+            timestamp.csv(), device, vote.csv(), directionFeedback.csv(), speedFeedback.csv(),
             r?.sufficientSignal ?: false,
             (r?.mirageClockDirection ?: "").csv(),
             r?.mirageStable ?: false,
@@ -51,7 +57,7 @@ class UserFeedbackLogger(context: Context) {
             cue?.estimatedWindMinMps ?: "",
             cue?.estimatedWindMaxMps ?: "",
             cue?.confidence ?: "",
-            cue?.stable ?: "",
+            cue?.stable ?: false,
             cue?.stableForSec ?: "",
             (r?.aggregateWindState ?: "").csv(),
             (r?.aggregateWindClockDirection ?: "").csv(),

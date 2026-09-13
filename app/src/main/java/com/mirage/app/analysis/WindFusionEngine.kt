@@ -44,8 +44,12 @@ class WindFusionEngine {
             // Mirage contributes a deliberately broad strength bracket. Signal strength is NOT a direct anemometer;
             // this only prevents false precision while still giving the field UI a usable estimated range.
             val m = mirageSignalScore.coerceIn(0.0, 1.0)
-            val mirageMin = when { m < 0.35 -> 0.5; m < 0.60 -> 1.0; m < 0.80 -> 2.0; else -> 3.0 }
-            val mirageMax = when { m < 0.35 -> 3.0; m < 0.60 -> 5.0; m < 0.80 -> 7.0; else -> 9.0 }
+            val mphToMps = 0.44704
+            // Mirage is useful for direction/stability; strength remains conservative. Boiling/weak
+            // lateral structure should not create a large speed number from signal amplitude alone.
+            val mirageMph = when { m < 0.35 -> 0.0 to 2.0; m < 0.60 -> 2.0 to 4.0; m < 0.80 -> 4.0 to 6.0; else -> 6.0 to 8.0 }
+            val mirageMin = mirageMph.first * mphToMps
+            val mirageMax = mirageMph.second * mphToMps
             evidence += Evidence(
                 "MIRAGE", mirageClockAngleDeg,
                 (0.48 + 0.32 * m),

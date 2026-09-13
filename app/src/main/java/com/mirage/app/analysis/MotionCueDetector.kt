@@ -197,7 +197,9 @@ class MotionCueDetector {
     }
 
     private fun estimateWindRange(label: String, speedPxPerSec: Double, frameWidth: Int, stable: Boolean): Pair<Double, Double> {
-        // Normalize apparent motion by frame width so digital resolution changes do not dominate.
+        // v0.72: visual motion is used only to place the cue into a conservative behavioural band.
+        // Do NOT convert pixels/sec directly to wind speed. The same pixel motion can represent very
+        // different real wind depending on distance, object mass, flag size, wetness and zoom.
         val normPerSec = speedPxPerSec / frameWidth.toDouble().coerceAtLeast(1.0)
         val visualClass = when {
             normPerSec < 0.010 -> 1
@@ -206,15 +208,29 @@ class MotionCueDetector {
             normPerSec < 0.090 -> 4
             else -> 5
         }
-        // Broad Beaufort-like visual ranges. Flag/fabric gets slightly tighter because it responds readily to wind.
-        val ranges = if (label == "FLAG/FABRIC-LIKE") {
-            listOf(0.5 to 2.0, 1.5 to 3.5, 3.0 to 5.5, 5.0 to 8.0, 7.0 to 11.0)
-        } else {
-            listOf(0.0 to 2.5, 1.0 to 4.0, 2.5 to 6.0, 4.0 to 8.5, 6.0 to 12.0)
+
+        // Behavioural anchors expressed in mph, then converted to m/s for the existing fusion engine.
+        // These deliberately overlap. A final field estimate is quantised to a <=2 mph bracket only
+        // after temporal evidence has accumulated. Strong/saturated visual motion is carried as >12 mph
+        // so the UI can display "12+ mph" rather than pretending to distinguish 14 from 18 mph.
+        val mphRange = when {
+            "FLAG" in label || "FABRIC" in label -> when (visualClass) {
+                1 -> 1.0 to 3.0
+                2 -> 2.0 to 4.0
+                3 -> 4.0 to 6.0
+                4 -> 7.0 to 9.0
+                else -> 12.0 to 14.0
+            }
+            else -> when (visualClass) {
+                1 -> 0.0 to 2.0
+                2 -> 1.0 to 3.0
+                3 -> 4.0 to 6.0
+                4 -> 8.0 to 10.0
+                else -> 12.0 to 14.0
+            }
         }
-        val pair = ranges[(visualClass - 1).coerceIn(0, ranges.lastIndex)]
-        // Stable evidence deserves no false precision; keep same range, stability raises confidence instead.
-        return pair
+        val mphToMps = 0.44704
+        return mphRange.first * mphToMps to mphRange.second * mphToMps
     }
 
     private fun estimateConfidence(label: String, rect: Rect, speed: Double, stable: Boolean): Double {
