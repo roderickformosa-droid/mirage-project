@@ -423,17 +423,12 @@ class MainActivity : AppCompatActivity() {
         val range = RangeEstimator.distance(rangeCtx)
         val bestCue = r.motionCues.maxByOrNull { it.confidence }
         binding.readoutText.text = buildString {
-            appendLine("MIRAGE: ${if (r.sufficientSignal) r.mirageClockDirection else "insufficient"}")
-            appendLine("score %.2f | ${if (r.mirageStable) "STABLE %.1fs".format(r.mirageStableForSec) else "changing"}")
-            if (bestCue != null) {
-                appendLine("${bestCue.label}: ${bestCue.clockDirection}")
-                appendLine("EST wind %.1f–%.1f m/s | conf %.0f%%".format(
-                    bestCue.estimatedWindMinMps, bestCue.estimatedWindMaxMps, bestCue.confidence * 100.0))
-                bestCue.physicalMotionMps?.let {
-                    appendLine("object %.2f m/s @ %.0fm".format(it, bestCue.distanceM ?: 0.0))
-                }
-                appendLine(bestCue.windEstimateQuality)
-            } else appendLine("secondary cues: none")
+            appendLine("FUSED: ${r.aggregateWindState} • ${r.aggregateWindClockDirection}")
+            appendLine("confidence %.0f%% • agreement %.0f%%".format(r.aggregateWindConfidence * 100.0, r.aggregateDirectionAgreement * 100.0))
+            appendLine("sources: ${r.aggregateWindSources}")
+            if (r.aggregateWindMaxMps > 0.0) appendLine("broad visual estimate %.1f–%.1f m/s".format(r.aggregateWindMinMps, r.aggregateWindMaxMps))
+            appendLine("MIRAGE: ${if (r.sufficientSignal) r.mirageClockDirection else "not detected"}")
+            if (bestCue != null) appendLine("strongest cue: ${bestCue.label} • ${bestCue.clockDirection}")
             appendLine("range ${range.meters?.let { "%.0fm".format(it) } ?: "--"} [${range.source}]")
             appendLine("zoom %.2fx ${if (autoZoomEnabled) "AUTO" else "MANUAL"}".format(cameraController.currentZoomRatio()))
         }
@@ -442,18 +437,17 @@ class MainActivity : AppCompatActivity() {
 
         val warm = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
             currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
-        val status = when {
-            r.mirageStable -> "● STABLE MIRAGE • ${r.mirageClockDirection}"
-            bestCue?.stable == true -> "● STABLE WIND • ${bestCue.label} • ${bestCue.clockDirection} • %.1f–%.1f m/s EST".format(bestCue.estimatedWindMinMps, bestCue.estimatedWindMaxMps)
-            r.sufficientSignal -> "● CHANGING MIRAGE • ${r.mirageClockDirection}"
-            bestCue != null -> "● CHANGING WIND • ${bestCue.label} • ${bestCue.clockDirection} • %.1f–%.1f m/s EST".format(bestCue.estimatedWindMinMps, bestCue.estimatedWindMaxMps)
-            else -> "NO MIRAGE DETECTED • NO RELIABLE WIND CUE"
+        val speedText = if (r.aggregateWindMaxMps > 0.0) " • %.1f–%.1f m/s EST".format(r.aggregateWindMinMps, r.aggregateWindMaxMps) else ""
+        val status = when (r.aggregateWindState) {
+            "STABLE" -> "● STABLE CONDITION • ${r.aggregateWindClockDirection}$speedText • ${r.aggregateWindSources}"
+            "CHANGING" -> "● CHANGING CONDITION • ${r.aggregateWindClockDirection}$speedText • ${r.aggregateWindSources}"
+            else -> "NO RELIABLE WIND CONDITION"
         }
         binding.signalQualityText.text = if (warm) "WARM 3 Hz | $status" else status
-        binding.signalQualityText.setBackgroundColor(when {
-            r.mirageStable || bestCue?.stable == true -> 0xAA087A22.toInt()
-            r.sufficientSignal || bestCue != null -> 0xAAAA0000.toInt()
-            else -> 0x88AA0000.toInt()
+        binding.signalQualityText.setBackgroundColor(when (r.aggregateWindState) {
+            "STABLE" -> 0xAA087A22.toInt()
+            "CHANGING" -> 0xAAAA0000.toInt()
+            else -> 0x88555555.toInt()
         })
 
         binding.graphActivity.addValue(r.tvActivityIndex.toFloat())
@@ -479,7 +473,7 @@ class MainActivity : AppCompatActivity() {
             binding.cloudUsagePanel.visibility = View.GONE
         }
         binding.openCloudConsoleButton.setOnClickListener {
-            val url = "https://console.cloud.google.com/apis/api/vision.googleapis.com/metrics?project=project-d7481617-c36b-4977-b8f"
+            val url = "https://console.cloud.google.com/billing/01FCB2-750901-4F0DA2?project=cs-project-6rfoyr6d&organizationId=571526312308"
             try {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             } catch (_: Throwable) {

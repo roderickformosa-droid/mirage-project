@@ -11,8 +11,8 @@ android {
         applicationId = "com.mirage.app"
         minSdk = 26   // Camera2 manual focus/exposure controls need API 23+; 26 keeps things simpler
         targetSdk = 34
-        versionCode = 11
-        versionName = "0.65-validation-confirmed"
+        versionCode = 12
+        versionName = "0.66-wind-fusion"
 
         // Optional Google Cloud Vision key. Prefer setting CLOUD_VISION_API_KEY as a
         // GitHub Actions secret/environment variable; blank keeps cloud recognition disabled.
@@ -60,7 +60,7 @@ dependencies {
     // it as a local module -- see README_BUILD.md "If OpenCV via Maven fails".
     implementation("org.opencv:opencv:4.9.0")
 
-    // On-device semantic labels for centre target and moving wind cues.
+    // On-device semantic labels for environmental wind cues only.
     implementation("com.google.mlkit:image-labeling:17.0.9")
 
     // --- AndroidX / Kotlin basics ---

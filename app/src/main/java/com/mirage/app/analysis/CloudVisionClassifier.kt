@@ -178,7 +178,11 @@ class CloudVisionClassifier(context: Context) {
             "tree" in s -> "TREE"
             "branch" in s -> "BRANCH"
             "twig" in s -> "TWIG"
-            "leaf" in s || "foliage" in s || "vegetation" in s || "plant" in s || "shrub" in s || "grass" in s -> "FOLIAGE"
+            "grass" in s -> "GRASS"
+            "palm" in s && ("frond" in s || "leaf" in s) -> "PALM FROND"
+            "palm" in s -> "PALM"
+            "reed" in s -> "REED"
+            "leaf" in s || "foliage" in s || "vegetation" in s || "plant" in s || "shrub" in s -> "FOLIAGE"
             "flag" in s || "banner" in s -> "FLAG"
             "rope" in s || "cord" in s || "string" in s || "cable" in s -> "ROPE / LINE"
             "smoke" in s -> "SMOKE"
@@ -187,9 +191,9 @@ class CloudVisionClassifier(context: Context) {
             "fabric" in s || "textile" in s || "cloth" in s -> "FABRIC"
             "door" in s -> "DOOR"
             "sign" in s -> "SIGN"
-            "metal" in s || "steel" in s -> "METAL / STEEL-LIKE TARGET"
-            "person" in s || "human" in s -> "PERSON"
-            "vehicle" in s || "car" in s || "truck" in s -> "VEHICLE"
+            // Cloud calls are reserved for environmental wind cues, not target/object identification.
+            "metal" in s || "steel" in s || "person" in s || "human" in s -> null
+            "vehicle" in s || "car" in s || "truck" in s || "building" in s || "wall" in s -> null
             else -> null
         }
     }

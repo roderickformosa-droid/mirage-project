@@ -98,6 +98,10 @@ class AiVisionClassifier {
             "tree" in s -> "TREE"
             "branch" in s -> "BRANCH"
             "twig" in s -> "TWIG"
+            "grass" in s -> "GRASS"
+            "palm" in s && ("frond" in s || "leaf" in s) -> "PALM FROND"
+            "palm" in s -> "PALM"
+            "reed" in s -> "REED"
             "leaf" in s || "plant" in s || "vegetation" in s || "shrub" in s -> "FOLIAGE"
             "flag" in s || "banner" in s -> "FLAG"
             "rope" in s || "cord" in s || "string" in s || "cable" in s -> "ROPE / LINE"
@@ -105,11 +109,9 @@ class AiVisionClassifier {
             "fog" in s || "mist" in s -> "FOG / MIST"
             "door" in s -> "DOOR"
             "road sign" in s || "traffic sign" in s || "sign" in s -> "SIGN"
-            "steel" in s || "metal" in s -> "METAL / STEEL-LIKE TARGET"
-            "building" in s || "house" in s -> "BUILDING"
-            "wall" in s -> "WALL"
-            "vehicle" in s || "car" in s -> "VEHICLE"
-            "person" in s || "human" in s -> "PERSON"
+            // Rigid/irrelevant objects are intentionally ignored: semantic AI exists only to classify wind-sensitive cues.
+            "building" in s || "house" in s || "wall" in s || "metal" in s || "steel" in s -> null
+            "vehicle" in s || "car" in s || "person" in s || "human" in s -> null
             else -> null
         }
     }

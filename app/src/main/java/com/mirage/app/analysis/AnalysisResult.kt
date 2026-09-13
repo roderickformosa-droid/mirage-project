@@ -86,11 +86,13 @@ data class AnalysisResult(
     // Secondary visual wind indicators
     val motionCues: List<MotionCue>,
 
-    // Experimental centre-target interpretation. Labels are deliberately conservative.
-    val targetLabel: String = "",
-    val targetConfidence: Double = 0.0,
-    val targetLeftPx: Int = 0,
-    val targetTopPx: Int = 0,
-    val targetRightPx: Int = 0,
-    val targetBottomPx: Int = 0
+    // Aggregate opinion from mirage + all usable environmental cues.
+    val aggregateWindState: String = "INSUFFICIENT",
+    val aggregateWindClockDirection: String = "--",
+    val aggregateWindConfidence: Double = 0.0,
+    val aggregateWindSources: String = "NONE",
+    val aggregateWindMinMps: Double = 0.0,
+    val aggregateWindMaxMps: Double = 0.0,
+    val aggregateStableForSec: Double = 0.0,
+    val aggregateDirectionAgreement: Double = 0.0
 )

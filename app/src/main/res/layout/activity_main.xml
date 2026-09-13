@@ -133,7 +133,7 @@
         android:id="@+id/appVersionText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="v0.65 • CLOUD VALIDATION"
+        android:text="v0.66 • WIND FUSION"
         android:textColor="#FFFFFFFF"
         android:textSize="10sp"
         android:textStyle="bold"

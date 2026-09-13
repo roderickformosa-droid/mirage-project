@@ -16,8 +16,6 @@ class WindCueOverlayView @JvmOverloads constructor(context: Context, attrs: Attr
     private var lastGoodMirageMs = 0L
     private var heldCues: List<MotionCue> = emptyList()
     private var heldCueMs = 0L
-    private var heldTarget: AnalysisResult? = null
-    private var heldTargetMs = 0L
     private val holdMs = 4_000L
 
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style=Paint.Style.STROKE; strokeWidth=3f; strokeCap=Paint.Cap.ROUND }
@@ -33,7 +31,6 @@ class WindCueOverlayView @JvmOverloads constructor(context: Context, attrs: Attr
         if (r.sufficientSignal) { lastGoodMirage=r; lastGoodMirageMs=now }
         if (!r.sufficientSignal && (r.sceneLuma < 48.0 || r.motionCues.isNotEmpty())) lastGoodMirage = null
         if (r.motionCues.isNotEmpty()) { heldCues=r.motionCues; heldCueMs=now }
-        if (r.targetLabel.isNotBlank() && r.targetConfidence >= .34) { heldTarget=r; heldTargetMs=now }
         postInvalidateOnAnimation()
     }
 
@@ -58,12 +55,8 @@ class WindCueOverlayView @JvmOverloads constructor(context: Context, attrs: Attr
         val cues=if(r.motionCues.isNotEmpty()) r.motionCues else heldCues.takeIf{now-heldCueMs<=holdMs}.orEmpty()
         cues.take(3).forEach { cue -> drawCue(c,cue,rect(cue.leftPx,cue.topPx,cue.rightPx,cue.bottomPx)) }
 
-        val target=(if(r.targetLabel.isNotBlank()) r else heldTarget?.takeIf{now-heldTargetMs<=3_000L})
-        drawTargetLabel(c,target)
-
-        val bestCue=cues.maxByOrNull{it.confidence}
-        val stable = r.mirageStable || bestCue?.stable==true
-        val changing = (r.sufficientSignal || bestCue!=null) && !stable
+        val stable = r.aggregateWindState == "STABLE"
+        val changing = r.aggregateWindState == "CHANGING"
         if(stable || changing) {
             val phase=(sin(now/180.0)+1.0)/2.0
             pulse.alpha=(120+120*phase).toInt()
@@ -133,16 +126,6 @@ class WindCueOverlayView @JvmOverloads constructor(context: Context, attrs: Attr
         c.drawLine(x1,y1,x2,y2,outline); c.drawLine(x1,y1,x2,y2,stroke)
         val a=atan2((y2-y1).toDouble(),(x2-x1).toDouble()); val h=22f
         for(off in listOf(2.55,-2.55)){val xx=x2+cos(a+off).toFloat()*h;val yy=y2+sin(a+off).toFloat()*h;c.drawLine(x2,y2,xx,yy,stroke)}
-    }
-
-    private fun drawTargetLabel(c:Canvas,r:AnalysisResult?){
-        val label = r?.targetLabel?.takeIf { it.isNotBlank() } ?: "IDENTIFYING…"
-        val conf = r?.targetConfidence ?: 0.0
-        val s = if(conf >= .34) "TARGET: $label" else "TARGET: IDENTIFYING…"
-        val w=text.measureText(s)
-        val x=((width-w)/2f).coerceAtLeast(8f)
-        val y=height/2f+72f
-        drawLabel(c,x,y,s)
     }
 
     private fun drawLabel(c:Canvas,x:Float,y:Float,s:String){

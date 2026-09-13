@@ -23,9 +23,9 @@ class FrameAnalyzer(
     private val textureVariance = TextureVarianceExtractor()
     private val frequencyDomain = FrequencyDomainExtractor()
     private val motionCueDetector = MotionCueDetector()
-    private val centerTargetDetector = CenterTargetDetector()
     private val aiVision = AiVisionClassifier()
     private val cloudVision = CloudVisionClassifier(context)
+    private val windFusion = WindFusionEngine()
 
     private var lastAnalyzedNs = 0L
     @Volatile private var targetHz: Double = targetHz
@@ -78,7 +78,6 @@ class FrameAnalyzer(
 
             var motionCues = if (!stabInfo.disturbance && stabInfo.trackingOk) motionCueDetector.process(stabilizedU8, cameraTimestampNs) else emptyList()
             val strongestCue = motionCues.maxByOrNull { it.confidence }
-            aiVision.submitTarget(stabilizedU8)
             aiVision.submitCue(stabilizedU8, strongestCue)
             aiVision.latestCue()?.let { ai ->
                 if (motionCues.isNotEmpty()) {
@@ -146,12 +145,14 @@ class FrameAnalyzer(
             val mirageClock = if (sufficientSignal && mirageClockAngle.isFinite()) MotionCueDetector.clockLabel(mirageClockAngle) else "--"
             val (mirageStable, mirageStableFor) = updateMirageStability(sufficientSignal, mirageClockAngle, bmResult.magnitude, cameraTimestampNs)
 
-            val heuristicTarget = if (!stabInfo.disturbance) centerTargetDetector.detect(stabilizedU8) else null
-            val aiTarget = aiVision.latestTarget()
-            val targetLabel = aiTarget?.label ?: heuristicTarget?.label ?: ""
-            val targetConfidence = aiTarget?.confidence ?: heuristicTarget?.confidence ?: 0.0
-            val cx = stabilizedU8.cols()/2; val cy = stabilizedU8.rows()/2
-            val tw=(stabilizedU8.cols()*0.16).toInt(); val th=(stabilizedU8.rows()*0.16).toInt()
+            val fusion = windFusion.update(
+                mirageDetected = sufficientSignal,
+                mirageStable = mirageStable,
+                mirageClockAngleDeg = mirageClockAngle,
+                mirageSignalScore = signalScore,
+                cues = motionCues,
+                nowNs = cameraTimestampNs
+            )
 
             val result = AnalysisResult(
                 cameraTimestampNs, SystemClock.elapsedRealtimeNanos(), frameIndex++,
@@ -163,9 +164,8 @@ class FrameAnalyzer(
                 fdResult.dominantFreqHz, fdResult.spectralEnergy, fdResult.spectralCentroidHz,
                 sufficientSignal, mirageClock, mirageStable, mirageStableFor, signalScore, sceneLuma,
                 motionCues,
-                targetLabel, targetConfidence,
-                (cx-tw/2).coerceAtLeast(0), (cy-th/2).coerceAtLeast(0),
-                (cx+tw/2).coerceAtMost(stabilizedU8.cols()), (cy+th/2).coerceAtMost(stabilizedU8.rows())
+                fusion.state, fusion.clockDirection, fusion.confidence, fusion.sources,
+                fusion.windMinMps, fusion.windMaxMps, fusion.stableForSec, fusion.directionAgreement
             )
             onResult(result,image)
             stabilizedU8.release()

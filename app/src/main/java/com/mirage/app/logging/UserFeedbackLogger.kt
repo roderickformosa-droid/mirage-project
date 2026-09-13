@@ -28,7 +28,9 @@ class UserFeedbackLogger(context: Context) {
                     "mirage_detected", "mirage_direction", "mirage_stable", "mirage_stable_sec",
                     "cue_label", "cue_direction", "cue_wind_min_mps", "cue_wind_max_mps",
                     "cue_confidence", "cue_stable", "cue_stable_sec",
-                    "target_label", "target_confidence", "signal_score", "scene_luma"
+                    "aggregate_state", "aggregate_direction", "aggregate_confidence", "aggregate_sources",
+                    "aggregate_wind_min_mps", "aggregate_wind_max_mps", "direction_agreement",
+                    "signal_score", "scene_luma"
                 ).joinToString(",") + "\n"
             )
         }
@@ -51,8 +53,13 @@ class UserFeedbackLogger(context: Context) {
             cue?.confidence ?: "",
             cue?.stable ?: "",
             cue?.stableForSec ?: "",
-            (r?.targetLabel ?: "").csv(),
-            r?.targetConfidence ?: "",
+            (r?.aggregateWindState ?: "").csv(),
+            (r?.aggregateWindClockDirection ?: "").csv(),
+            r?.aggregateWindConfidence ?: "",
+            (r?.aggregateWindSources ?: "").csv(),
+            r?.aggregateWindMinMps ?: "",
+            r?.aggregateWindMaxMps ?: "",
+            r?.aggregateDirectionAgreement ?: "",
             r?.signalScore ?: "",
             r?.sceneLuma ?: ""
         )
