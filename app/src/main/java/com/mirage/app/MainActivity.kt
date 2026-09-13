@@ -43,6 +43,7 @@ import com.mirage.app.camera.CameraController
 import com.mirage.app.databinding.ActivityMainBinding
 import com.mirage.app.logging.SessionRecorder
 import com.mirage.app.logging.UserFeedbackLogger
+import com.mirage.app.logging.VoiceTrainingMemory
 import kotlin.math.max
 
 class MainActivity : AppCompatActivity() {
@@ -52,6 +53,8 @@ class MainActivity : AppCompatActivity() {
     private var frameAnalyzer: FrameAnalyzer? = null
     private var sessionRecorder: SessionRecorder? = null
     private lateinit var feedbackLogger: UserFeedbackLogger
+    private lateinit var voiceTrainingMemory: VoiceTrainingMemory
+    private var trainModeActive = false
     private var latestAnalysisResult: AnalysisResult? = null
     private var publishedWindResult: AnalysisResult? = null
     private var lastWindPublishMs = 0L
@@ -208,6 +211,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val trainingVoiceLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode != android.app.Activity.RESULT_OK) return@registerForActivityResult
+        val heard = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()?.lowercase() ?: return@registerForActivityResult
+        handleTrainingVoice(heard)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -221,6 +230,8 @@ class MainActivity : AppCompatActivity() {
         }
         cameraController = CameraController(this, this)
         feedbackLogger = UserFeedbackLogger(this)
+        voiceTrainingMemory = VoiceTrainingMemory(this)
+        updateTrainingMemoryUi()
         setupFeedbackControls()
         setupCloudUsageControls()
         setupOpticalModeControls()
@@ -270,10 +281,74 @@ class MainActivity : AppCompatActivity() {
         }
         binding.zoomPlus.setOnClickListener { manualZoom(+1) }
         binding.zoomMinus.setOnClickListener { manualZoom(-1) }
-        binding.voiceZoomButton.setOnClickListener { startVoiceZoom() }
+        binding.voiceZoomButton.setOnClickListener { if (trainModeActive) startTrainingVoice() else startVoiceZoom() }
+        binding.trainModeButton.setOnClickListener { toggleTrainMode() }
         setupPinchZoom()
 
         installThermalProtection()
+    }
+
+    private fun toggleTrainMode() {
+        trainModeActive = !trainModeActive
+        binding.trainModeButton.text = if (trainModeActive) "TRAIN ON" else "TRAIN"
+        binding.trainingPanel.visibility = if (trainModeActive) View.VISIBLE else View.GONE
+        binding.voiceZoomButton.text = if (trainModeActive) "VOICE TRAIN" else "VOICE"
+        if (trainModeActive) {
+            binding.trainingStatusText.text = "TRAIN MODE • SAY: TRACK FLAG / TRACK FOLIAGE / TRACK MIRAGE"
+            startTrainingVoice()
+        }
+    }
+
+    private fun startTrainingVoice() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Say what to track or how to correct it")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+        }
+        try { trainingVoiceLauncher.launch(intent) }
+        catch (_: Throwable) { Toast.makeText(this, "Voice recognition is unavailable on this phone.", Toast.LENGTH_LONG).show() }
+    }
+
+    private fun handleTrainingVoice(heard: String) {
+        val command = when {
+            "track flag" in heard || heard == "flag" -> "TRACK_FLAG"
+            "track foliage" in heard || "track leaves" in heard || heard == "foliage" -> "TRACK_FOLIAGE"
+            "track mirage" in heard || heard == "mirage" -> "TRACK_MIRAGE"
+            "direction correct" in heard || heard == "correct" -> "DIRECTION_CORRECT"
+            "direction wrong" in heard || "wrong direction" in heard -> "DIRECTION_WRONG"
+            "speed higher" in heard || "wind higher" in heard -> "SPEED_HIGHER"
+            "speed lower" in heard || "wind lower" in heard -> "SPEED_LOWER"
+            "stable" in heard -> "STABLE"
+            "changing" in heard -> "CHANGING"
+            "large flag" in heard -> "LARGE_FLAG"
+            "small flag" in heard -> "SMALL_FLAG"
+            "ignore" in heard -> "IGNORE_CUE"
+            else -> "NOTE_${heard.uppercase().replace(Regex("[^A-Z0-9]+"), "_").take(40)}"
+        }
+        val stats = voiceTrainingMemory.store(command, latestAnalysisResult)
+        binding.trainingProgress.progress = stats.percent
+        binding.trainingMemoryText.text = "LEARNING MEMORY ${stats.samples} / ${stats.target} • STORED"
+        binding.trainingStatusText.text = when (command) {
+            "TRACK_FLAG" -> "LEARNED: FLAG IS THE CUE • TRACKING MEMORY STORED"
+            "TRACK_FOLIAGE" -> "LEARNED: FOLIAGE IS THE CUE • TRACKING MEMORY STORED"
+            "TRACK_MIRAGE" -> "LEARNED: MIRAGE REGION • TRACKING MEMORY STORED"
+            "DIRECTION_CORRECT" -> "LEARNED: DIRECTION WAS CORRECT"
+            "DIRECTION_WRONG" -> "LEARNED: DIRECTION NEEDS CORRECTION"
+            "SPEED_HIGHER" -> "LEARNED: SPEED ESTIMATE WAS LOW"
+            "SPEED_LOWER" -> "LEARNED: SPEED ESTIMATE WAS HIGH"
+            "STABLE" -> "LEARNED: USER MARKED CONDITION STABLE"
+            "CHANGING" -> "LEARNED: USER MARKED CONDITION CHANGING"
+            else -> "VOICE NOTE STORED: ${heard.take(48)}"
+        }
+        Toast.makeText(this, "Training sample stored", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateTrainingMemoryUi() {
+        if (!::voiceTrainingMemory.isInitialized) return
+        val stats = voiceTrainingMemory.stats()
+        binding.trainingProgress.progress = stats.percent
+        binding.trainingMemoryText.text = "LEARNING MEMORY ${stats.samples} / ${stats.target}"
     }
 
     private fun installThermalProtection() {
