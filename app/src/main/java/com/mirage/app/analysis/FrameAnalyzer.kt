@@ -3,6 +3,7 @@ package com.mirage.app.analysis
 import android.content.Context
 import android.graphics.Rect
 import android.os.SystemClock
+import android.util.Log
 import androidx.camera.core.ImageProxy
 import org.opencv.core.*
 import org.opencv.core.Rect as CvRect
@@ -243,8 +244,19 @@ class FrameAnalyzer(
                 primaryCueConfidence = primaryCue?.confidence ?: 0.0
             )
             onResult(result, image)
+        } catch (t: Throwable) {
+            // A bad/ambiguous frame must never terminate the field app.
+            // Log it and allow CameraX to feed the next frame.
+            Log.e("MirageFrameAnalyzer", "Frame analysis failed; skipping frame", t)
+            resetForNewRoi()
         } finally {
-            fullGray?.release(); rotated?.release(); working?.release(); roiMat?.release(); roiFloat?.release(); stabilizedToRelease?.release(); image.close()
+            try { fullGray?.release() } catch (_: Throwable) {}
+            try { rotated?.release() } catch (_: Throwable) {}
+            try { working?.release() } catch (_: Throwable) {}
+            try { roiMat?.release() } catch (_: Throwable) {}
+            try { roiFloat?.release() } catch (_: Throwable) {}
+            try { stabilizedToRelease?.release() } catch (_: Throwable) {}
+            try { image.close() } catch (_: Throwable) {}
         }
     }
 

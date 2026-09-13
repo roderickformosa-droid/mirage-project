@@ -466,7 +466,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.analysisStageText.text = r.analysisStage
         binding.learningProgress.progress = r.learningPercent
-        binding.learningText.text = if (r.learningUseful) "LEARNING CONDITION ${r.learningPercent}%" else "INSUFFICIENT EVIDENCE ${r.learningPercent}%"
+        binding.learningText.text = if (r.learningUseful) "LEARNING ${r.learningPercent}%" else "SCANNING ${r.learningPercent}%"
         binding.learningDetailText.text = buildString {
             append("${r.trackedCueCount} CUE")
             if (r.trackedCueCount != 1) append("S")
@@ -510,9 +510,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.signalQualityText.clearAnimation()
             binding.windArrowText.visibility = View.GONE
-            binding.signalQualityText.text = "NO RELIABLE WIND CONDITION"
+            binding.signalQualityText.text = r.analysisStage
             binding.signalQualityText.setBackgroundColor(0x99555555.toInt())
-            binding.windDetailText.text = "${r.analysisStage} • ${r.learningPercent}% EVIDENCE"
+            binding.windDetailText.text = if (r.primaryCueLabel.isNotBlank()) "${r.primaryCueLabel} • ${r.learningPercent}%" else ""
             binding.feedbackPanel.visibility = View.GONE
         }
 
