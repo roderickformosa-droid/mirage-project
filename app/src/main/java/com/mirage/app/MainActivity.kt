@@ -6,6 +6,9 @@ import android.content.IntentFilter
 import android.speech.RecognizerIntent
 import android.os.BatteryManager
 import android.graphics.RectF
+import android.content.res.ColorStateList
+import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -34,6 +37,7 @@ import androidx.core.content.ContextCompat
 import com.mirage.app.analysis.AnalysisResult
 import com.mirage.app.analysis.CoordinateMapper
 import com.mirage.app.analysis.FrameAnalyzer
+import com.mirage.app.analysis.OpticalModeDetector
 import com.mirage.app.analysis.RangeEstimator
 import com.mirage.app.camera.CameraController
 import com.mirage.app.databinding.ActivityMainBinding
@@ -49,6 +53,13 @@ class MainActivity : AppCompatActivity() {
     private var sessionRecorder: SessionRecorder? = null
     private lateinit var feedbackLogger: UserFeedbackLogger
     private var latestAnalysisResult: AnalysisResult? = null
+    private var publishedWindResult: AnalysisResult? = null
+    private var lastWindPublishMs = 0L
+    private var lastFeedbackVotePublishMs = -1L
+    private var lastAnalysisReceivedMs = 0L
+    private var analysisWatchStartedMs = 0L
+    private var lastAutomaticCameraRestartMs = 0L
+    private var opticalOverride = OpticalModeDetector.Override.AUTO
 
     // RANGE ASSIST: orientation is local; location is optional. Cloud Vision uses internet only
     // for rare fallback object-label checks when local recognition is uncertain.
@@ -147,6 +158,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val analysisWatchdogRunnable = object : Runnable {
+        override fun run() {
+            if (!waitingForManualResume && frameAnalyzer != null) {
+                val now = SystemClock.elapsedRealtime()
+                val age = if (lastAnalysisReceivedMs > 0L) now - lastAnalysisReceivedMs else now - analysisWatchStartedMs
+                if (age > 2800L) {
+                    binding.analysisStageText.text = "ANALYSIS INTERRUPTED • REACQUIRING"
+                    binding.learningDetailText.text = "CAMERA PIPELINE IS BEING RE-ACQUIRED"
+                }
+                if (age > 5200L && now - lastAutomaticCameraRestartMs > 12000L) {
+                    lastAutomaticCameraRestartMs = now
+                    try { cameraController.stopCamera() } catch (_: Throwable) {}
+                    frameAnalyzer = null
+                    mainHandler.postDelayed({ if (!waitingForManualResume) initCameraOnceOpenCvReady() }, 350L)
+                }
+            }
+            mainHandler.postDelayed(this, 2000L)
+        }
+    }
+
     private val requestLocationPermission = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
@@ -190,6 +221,7 @@ class MainActivity : AppCompatActivity() {
         feedbackLogger = UserFeedbackLogger(this)
         setupFeedbackControls()
         setupCloudUsageControls()
+        setupOpticalModeControls()
 
         setupRangeAssist()
         setupDisplayControls()
@@ -360,7 +392,7 @@ class MainActivity : AppCompatActivity() {
     private fun availableStorageBytes(): Long = getExternalFilesDir(null)?.usableSpace ?: filesDir.usableSpace
 
     override fun onDestroy() {
-        cancelSessionTimeout(); stopStorageChecks()
+        cancelSessionTimeout(); stopStorageChecks(); mainHandler.removeCallbacks(analysisWatchdogRunnable)
         if (::sensorManager.isInitialized) {
             sensorManager.unregisterListener(orientationListener)
             sensorManager.unregisterListener(lightListener)
@@ -399,12 +431,18 @@ class MainActivity : AppCompatActivity() {
         )
         analyzer.setAutoRoiEnabled(binding.autoRoiToggle.isChecked)
         analyzer.setAmbientLux(lastAmbientLux)
+        analyzer.setOpticalModeOverride(opticalOverride)
         frameAnalyzer = analyzer
         analysis.setAnalyzer(cameraController.analysisExecutor, analyzer)
+        lastAnalysisReceivedMs = 0L
+        analysisWatchStartedMs = SystemClock.elapsedRealtime()
+        mainHandler.removeCallbacks(analysisWatchdogRunnable)
+        mainHandler.postDelayed(analysisWatchdogRunnable, 2000L)
         binding.roiOverlay.onRoiChanged = { frameAnalyzer?.resetForNewRoi() }
     }
 
     private fun onAnalysisResult(raw: AnalysisResult) {
+        lastAnalysisReceivedMs = SystemClock.elapsedRealtime()
         currentSignalScore = raw.signalScore
         val tempNow = SystemClock.elapsedRealtime()
         if (tempNow - lastBatteryTempUpdateMs >= 1500L) {
@@ -413,56 +451,167 @@ class MainActivity : AppCompatActivity() {
         }
 
         val rangeCtx = currentRangeContext()
-        val enrichedCues = raw.motionCues.map {
-            RangeEstimator.enrich(it, raw.fullWidthPx, rangeCtx)
-        }
+        val enrichedCues = raw.motionCues.map { RangeEstimator.enrich(it, raw.fullWidthPx, rangeCtx) }
         val r = raw.copy(motionCues = enrichedCues)
         latestAnalysisResult = r
-        binding.windCueOverlay.update(r)
+
+        // v0.68 intentionally hides frame-by-frame arrows/labels from the normal field UI.
+        // The overlay remains available to debug builds but does not drive the user's conclusion.
+        binding.windCueOverlay.visibility = View.GONE
+
+        binding.opticalModeText.text = when (r.opticalMode) {
+            "SPOTTING SCOPE" -> "SPOTTING SCOPE • ANALYSIS ACTIVE"
+            "PHONE CAMERA" -> "PHONE CAMERA • ANALYSIS ACTIVE"
+            else -> "DETECTING OPTICAL MODE…"
+        }
+        binding.analysisStageText.text = r.analysisStage
+        binding.learningProgress.progress = r.learningPercent
+        binding.learningText.text = if (r.learningUseful) "LEARNING CONDITION ${r.learningPercent}%" else "INSUFFICIENT EVIDENCE ${r.learningPercent}%"
+        binding.learningDetailText.text = buildString {
+            append("${r.trackedCueCount} CUE")
+            if (r.trackedCueCount != 1) append("S")
+            append(" TRACKED")
+            append(" • MIRAGE ")
+            append(if (r.sufficientSignal) "DETECTED" else "SEARCHING")
+        }
+        binding.scopeGuidanceText.visibility = if (r.opticalMode == "SPOTTING SCOPE") View.VISIBLE else View.GONE
+        if (r.opticalMode == "SPOTTING SCOPE") {
+            binding.scopeGuidanceText.text = when {
+                r.learningPercent < 18 -> "STEP 1 • FOCUS ON TARGET / SCENE"
+                r.sufficientSignal -> "MIRAGE DETECTED • KEEP THE AIR MASS STEADY IN VIEW"
+                else -> "STEP 2 • MIRAGE: FOCUS APPROX. MIDWAY TO TARGET"
+            }
+        }
+        val learningColor = when {
+            !r.learningUseful || r.learningPercent < 30 -> 0xFFD32F2F.toInt()
+            r.learningPercent < 70 -> 0xFFFFA000.toInt()
+            else -> 0xFF2E7D32.toInt()
+        }
+        binding.learningProgress.progressTintList = ColorStateList.valueOf(learningColor)
 
         val range = RangeEstimator.distance(rangeCtx)
-        val bestCue = r.motionCues.maxByOrNull { it.confidence }
+        updateNavigationReadout(range)
+
+        // Publish at most one new wind condition every 3 seconds. Internal analysis remains fast.
+        val publishable = r.aggregateWindState != "INSUFFICIENT" && r.aggregateWindConfidence >= 0.42 && r.learningPercent >= 35 && r.aggregateWindMaxMps > 0.0
+        if (publishable && tempNow - lastWindPublishMs >= 3000L) {
+            publishedWindResult = r
+            lastWindPublishMs = tempNow
+        }
+
+        val published = publishedWindResult
+        val freshPublished = published != null && tempNow - lastWindPublishMs <= 6000L
+        if (publishable && published != null) {
+            showPublishedWind(published, current = true)
+            binding.feedbackPanel.visibility = if (lastFeedbackVotePublishMs == lastWindPublishMs) View.GONE else View.VISIBLE
+        } else if (freshPublished && published != null) {
+            showPublishedWind(published, current = false)
+            binding.feedbackPanel.visibility = View.GONE
+        } else {
+            binding.signalQualityText.clearAnimation()
+            binding.windArrowText.visibility = View.GONE
+            binding.signalQualityText.text = "NO RELIABLE WIND CONDITION"
+            binding.signalQualityText.setBackgroundColor(0x99555555.toInt())
+            binding.windDetailText.text = "${r.analysisStage} • ${r.learningPercent}% EVIDENCE"
+            binding.feedbackPanel.visibility = View.GONE
+        }
+
+        // Hidden engineering traces remain logged for diagnosis without cluttering the live screen.
         binding.readoutText.text = buildString {
+            appendLine("MODE: ${r.opticalMode} • ${r.analysisStage}")
+            appendLine("LEARNING: ${r.learningPercent}% • ${r.trackedCueCount} tracked cues")
             appendLine("FUSED: ${r.aggregateWindState} • ${r.aggregateWindClockDirection}")
             appendLine("confidence %.0f%% • agreement %.0f%%".format(r.aggregateWindConfidence * 100.0, r.aggregateDirectionAgreement * 100.0))
             appendLine("sources: ${r.aggregateWindSources}")
-            if (r.aggregateWindMaxMps > 0.0) appendLine("broad visual estimate %.1f–%.1f m/s".format(r.aggregateWindMinMps, r.aggregateWindMaxMps))
             appendLine("MIRAGE: ${if (r.sufficientSignal) r.mirageClockDirection else "not detected"}")
-            if (bestCue != null) appendLine("strongest cue: ${bestCue.label} • ${bestCue.clockDirection}")
-            appendLine("range ${range.meters?.let { "%.0fm".format(it) } ?: "--"} [${range.source}]")
-            appendLine("zoom %.2fx ${if (autoZoomEnabled) "AUTO" else "MANUAL"}".format(cameraController.currentZoomRatio()))
         }
-
-        updateNavigationReadout(range)
-
-        val warm = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
-            currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
-        val speedText = if (r.aggregateWindMaxMps > 0.0) " • %.1f–%.1f m/s EST".format(r.aggregateWindMinMps, r.aggregateWindMaxMps) else ""
-        val status = when (r.aggregateWindState) {
-            "STABLE" -> "● STABLE CONDITION • ${r.aggregateWindClockDirection}$speedText • ${r.aggregateWindSources}"
-            "CHANGING" -> "● CHANGING CONDITION • ${r.aggregateWindClockDirection}$speedText • ${r.aggregateWindSources}"
-            else -> "NO RELIABLE WIND CONDITION"
-        }
-        binding.signalQualityText.text = if (warm) "WARM 3 Hz | $status" else status
-        binding.signalQualityText.setBackgroundColor(when (r.aggregateWindState) {
-            "STABLE" -> 0xAA087A22.toInt()
-            "CHANGING" -> 0xAAAA0000.toInt()
-            else -> 0x88555555.toInt()
-        })
 
         binding.graphActivity.addValue(r.tvActivityIndex.toFloat())
         binding.graphAngle.addValue(r.bmAngleDeg.toFloat())
         binding.graphMagnitude.addValue(r.bmMagnitude.toFloat())
         binding.graphStabResidual.addValue(kotlin.math.hypot(r.stabDx, r.stabDy).toFloat())
-
-        if (binding.debugOverlay.visibility == View.VISIBLE) {
-            binding.debugOverlay.update(r, analysisRoiToView(r))
+        if (binding.debugOverlay.visibility == View.VISIBLE) binding.debugOverlay.update(r, analysisRoiToView(r))
+        if (r.opticalMode == "SPOTTING SCOPE") {
+            // Avoid digital zoom sweeps destabilizing an already magnified scope image.
+            autoZoomSearching = false
+        } else {
+            handleAutoZoom(r)
         }
-        handleAutoZoom(r)
         sessionRecorder?.logResult(r)
         updateCloudUsageUi()
     }
 
+    private fun showPublishedWind(r: AnalysisResult, current: Boolean) {
+        val arrow = directionArrow(r.aggregateWindClockDirection)
+        val speed = "%.1f–%.1f m/s EST.".format(r.aggregateWindMinMps, r.aggregateWindMaxMps)
+        val prefix = if (current) "" else "LAST ESTIMATE • "
+        val stable = r.aggregateWindState == "STABLE"
+        val changing = r.aggregateWindState == "CHANGING"
+        binding.signalQualityText.text = when {
+            stable -> "${prefix}STABLE CONDITION"
+            changing -> "${prefix}CHANGING CONDITION"
+            else -> "${prefix}WIND CONDITION"
+        }
+        binding.windArrowText.visibility = View.VISIBLE
+        binding.windArrowText.text = arrow
+        binding.signalQualityText.setBackgroundColor(when {
+            stable && current -> 0xCC087A22.toInt()
+            changing && current -> 0xCCAA0000.toInt()
+            else -> 0x99555555.toInt()
+        })
+        binding.windDetailText.text = "$speed • CONF ${(r.aggregateWindConfidence * 100).toInt()}% • ${r.aggregateWindSources}"
+        binding.signalQualityText.clearAnimation()
+        binding.windArrowText.clearAnimation()
+        if (current && (stable || changing)) {
+            val pulse = AlphaAnimation(1.0f, 0.50f).apply {
+                duration = if (stable) 700L else 500L
+                repeatMode = Animation.REVERSE
+                repeatCount = Animation.INFINITE
+            }
+            binding.signalQualityText.startAnimation(pulse)
+            if (stable) binding.windArrowText.startAnimation(AlphaAnimation(1.0f, 0.58f).apply {
+                duration = 700L; repeatMode = Animation.REVERSE; repeatCount = Animation.INFINITE
+            })
+        }
+    }
+
+    private fun directionArrow(clock: String): String {
+        val hour = clock.substringBefore(" ").toIntOrNull() ?: return "↔"
+        return when (hour) {
+            12 -> "↑"
+            1, 2 -> "↗"
+            3 -> "→"
+            4, 5 -> "↘"
+            6 -> "↓"
+            7, 8 -> "↙"
+            9 -> "←"
+            10, 11 -> "↖"
+            else -> "↔"
+        }
+    }
+
+    private fun setupOpticalModeControls() {
+        fun updateButton() {
+            binding.opticalModeButton.text = when (opticalOverride) {
+                OpticalModeDetector.Override.AUTO -> "MODE AUTO"
+                OpticalModeDetector.Override.PHONE -> "MODE PHONE"
+                OpticalModeDetector.Override.SPOTTING_SCOPE -> "MODE SCOPE"
+            }
+        }
+        updateButton()
+        binding.opticalModeButton.setOnClickListener {
+            opticalOverride = when (opticalOverride) {
+                OpticalModeDetector.Override.AUTO -> OpticalModeDetector.Override.PHONE
+                OpticalModeDetector.Override.PHONE -> OpticalModeDetector.Override.SPOTTING_SCOPE
+                OpticalModeDetector.Override.SPOTTING_SCOPE -> OpticalModeDetector.Override.AUTO
+            }
+            frameAnalyzer?.setOpticalModeOverride(opticalOverride)
+            publishedWindResult = null
+            lastWindPublishMs = 0L
+            binding.feedbackPanel.visibility = View.GONE
+            updateButton()
+        }
+    }
 
     private fun setupCloudUsageControls() {
         binding.cloudUsageButton.setOnClickListener {
@@ -514,7 +663,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun recordOperatorFeedback(vote: UserFeedbackLogger.Vote) {
-        val file = feedbackLogger.record(vote, latestAnalysisResult)
+        val file = feedbackLogger.record(vote, publishedWindResult ?: latestAnalysisResult)
+        lastFeedbackVotePublishMs = lastWindPublishMs
+        binding.feedbackPanel.visibility = View.GONE
         val label = when (vote) {
             UserFeedbackLogger.Vote.AGREE -> "AGREE"
             UserFeedbackLogger.Vote.NOT_SURE -> "NOT SURE"

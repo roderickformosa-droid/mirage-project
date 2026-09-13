@@ -1,149 +1,97 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#000000">
 
-    <androidx.camera.view.PreviewView android:id="@+id/previewView" android:layout_width="0dp" android:layout_height="0dp" app:layout_constraintTop_toTopOf="parent" app:layout_constraintBottom_toTopOf="@id/controlStrip" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="0dp" android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/controlStrip"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <com.mirage.app.ui.RoiOverlayView android:id="@+id/roiOverlay" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" />
-    <com.mirage.app.ui.WindCueOverlayView android:id="@+id/windCueOverlay" android:layout_width="0dp" android:layout_height="0dp" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" />
+    <com.mirage.app.ui.WindCueOverlayView android:id="@+id/windCueOverlay" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" />
     <com.mirage.app.ui.DebugOverlayView android:id="@+id/debugOverlay" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" />
 
-    <androidx.constraintlayout.widget.Guideline android:id="@+id/centerDataGuide" android:orientation="horizontal" app:layout_constraintGuide_percent="0.61" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    <TextView
+        android:id="@+id/opticalModeText"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="10dp" android:layout_marginStart="10dp"
+        android:background="#99000000" android:paddingHorizontal="9dp" android:paddingVertical="5dp"
+        android:text="DETECTING OPTICAL MODE" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="11sp"
+        app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" />
 
-    <TextView android:id="@+id/signalQualityText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:background="#9A000000" android:paddingHorizontal="12dp" android:paddingVertical="7dp" android:text="NO MIRAGE DETECTED" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="16sp" android:gravity="center" app:layout_constraintTop_toTopOf="@id/centerDataGuide" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
-    <TextView android:id="@+id/targetHudText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="#90000000" android:paddingHorizontal="10dp" android:paddingVertical="6dp" android:fontFamily="monospace" android:gravity="center" android:text="AZ --  --   ANGLE --   RANGE --" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="13sp" app:layout_constraintTop_toBottomOf="@id/signalQualityText" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+    <TextView
+        android:id="@+id/analysisStageText"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="6dp" android:background="#99000000"
+        android:paddingHorizontal="10dp" android:paddingVertical="5dp"
+        android:text="DETECTING SCENE" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp"
+        app:layout_constraintTop_toBottomOf="@id/opticalModeText" app:layout_constraintStart_toStartOf="@id/opticalModeText" />
+
+    <LinearLayout
+        android:id="@+id/learningPanel"
+        android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_marginStart="14dp" android:layout_marginEnd="14dp" android:layout_marginTop="12dp"
+        android:orientation="vertical" android:padding="10dp" android:background="#A0000000"
+        app:layout_constraintTop_toBottomOf="@id/analysisStageText" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView">
+        <TextView android:id="@+id/learningText" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="LEARNING CONDITION 0%" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="14sp" android:gravity="center" />
+        <ProgressBar android:id="@+id/learningProgress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="12dp" android:layout_marginTop="6dp" android:max="100" android:progress="0" />
+        <TextView android:id="@+id/learningDetailText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="SEARCHING FOR USABLE WIND CUES" android:textColor="#D8FFFFFF" android:textSize="10sp" android:gravity="center" />
+        <TextView android:id="@+id/scopeGuidanceText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="" android:textColor="#FFE082" android:textStyle="bold" android:textSize="10sp" android:gravity="center" android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/signalQualityText"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="18dp" android:background="#9A000000"
+        android:paddingHorizontal="16dp" android:paddingVertical="10dp"
+        android:text="NO RELIABLE WIND CONDITION" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="18sp" android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@id/learningPanel" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/windArrowText"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="2dp" android:background="#78000000"
+        android:paddingHorizontal="12dp" android:paddingVertical="1dp"
+        android:text="→" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="48sp" android:gravity="center" android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/signalQualityText" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/windDetailText"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="6dp" android:background="#85000000"
+        android:paddingHorizontal="10dp" android:paddingVertical="6dp"
+        android:text="WAITING FOR EVIDENCE" android:textColor="#FFFFFF" android:textSize="13sp" android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@id/windArrowText" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView android:id="@+id/targetHudText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="#80000000" android:paddingHorizontal="8dp" android:paddingVertical="4dp" android:fontFamily="monospace" android:gravity="center" android:text="AZ --   ANGLE --   RANGE --" android:textColor="#FFFFFF" android:textSize="11sp" app:layout_constraintTop_toBottomOf="@id/windDetailText" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
     <TextView android:id="@+id/readoutText" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
 
     <Button android:id="@+id/resumeButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RESUME" android:textStyle="bold" android:visibility="gone" android:enabled="false" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView" />
 
-
-    <TextView
-        android:id="@+id/brandWatermark"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="50dp"
-        android:background="#52000000"
-        android:paddingHorizontal="8dp"
-        android:paddingVertical="3dp"
-        android:text="RifletalksTechnologies"
-        android:textColor="#D9FFFFFF"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        app:layout_constraintBottom_toBottomOf="@id/previewView"
-        app:layout_constraintStart_toStartOf="@id/previewView"
-        app:layout_constraintEnd_toEndOf="@id/previewView" />
+    <TextView android:id="@+id/brandWatermark" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="54dp" android:background="#52000000" android:paddingHorizontal="8dp" android:paddingVertical="3dp" android:text="RifletalksTechnologies" android:textColor="#D9FFFFFF" android:textSize="11sp" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" />
 
     <LinearLayout
         android:id="@+id/feedbackPanel"
-        android:layout_width="0dp"
-        android:layout_height="44dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginBottom="4dp"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:background="#B0101010"
-        app:layout_constraintBottom_toBottomOf="@id/previewView"
-        app:layout_constraintStart_toStartOf="@id/previewView"
-        app:layout_constraintEnd_toEndOf="@id/previewView">
-
-        <Button
-            android:id="@+id/feedbackAgree"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:text="✓ AGREE"
-            android:textSize="10sp" />
-
-        <Button
-            android:id="@+id/feedbackUnsure"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:text="NOT SURE"
-            android:textSize="10sp" />
-
-        <Button
-            android:id="@+id/feedbackDisagree"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:text="✕ DISAGREE"
-            android:textSize="10sp" />
+        android:layout_width="0dp" android:layout_height="44dp"
+        android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:layout_marginBottom="4dp"
+        android:orientation="horizontal" android:gravity="center" android:background="#B0101010" android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView">
+        <Button android:id="@+id/feedbackAgree" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="✓ AGREE" android:textSize="10sp" />
+        <Button android:id="@+id/feedbackUnsure" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="NOT SURE" android:textSize="10sp" />
+        <Button android:id="@+id/feedbackDisagree" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="✕ DISAGREE" android:textSize="10sp" />
     </LinearLayout>
 
-
-    <LinearLayout
-        android:id="@+id/cloudUsagePanel"
-        android:layout_width="300dp"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:background="#F0202020"
-        android:visibility="gone"
-        android:elevation="12dp"
-        app:layout_constraintStart_toStartOf="@id/previewView"
-        app:layout_constraintEnd_toEndOf="@id/previewView"
-        app:layout_constraintTop_toTopOf="@id/previewView"
-        app:layout_constraintBottom_toBottomOf="@id/previewView">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="CLOUD AI USAGE"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold"
-            android:textSize="18sp"
-            android:gravity="center" />
-
-        <TextView
-            android:id="@+id/cloudUsageText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Session: 0\nToday: 0 / 30\nThis month: 0 / 900\nEstimated device cost: €0.00"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp"
-            android:lineSpacingExtra="5dp" />
-
-        <TextView
-            android:id="@+id/cloudUsageNote"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="App counters are per device. Google Cloud Console is authoritative for project-wide usage and billing."
-            android:textColor="#CFCFCF"
-            android:textSize="11sp" />
-
-        <Button
-            android:id="@+id/openCloudConsoleButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="OPEN GOOGLE CLOUD USAGE"
-            android:textSize="11sp" />
-
-        <Button
-            android:id="@+id/closeCloudUsageButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="CLOSE"
-            android:textSize="11sp" />
+    <LinearLayout android:id="@+id/cloudUsagePanel" android:layout_width="300dp" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp" android:background="#F0202020" android:visibility="gone" android:elevation="12dp" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CLOUD AI USAGE" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="18sp" android:gravity="center" />
+        <TextView android:id="@+id/cloudUsageText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Session: 0\nToday: 0 / 30\nThis month: 0 / 900\nEstimated device cost: €0.00" android:textColor="#FFFFFF" android:textSize="15sp" android:lineSpacingExtra="5dp" />
+        <TextView android:id="@+id/cloudUsageNote" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="App counters are per device. Google Cloud Console is authoritative for project-wide usage and billing." android:textColor="#CFCFCF" android:textSize="11sp" />
+        <Button android:id="@+id/openCloudConsoleButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="OPEN GOOGLE CLOUD USAGE" android:textSize="11sp" />
+        <Button android:id="@+id/closeCloudUsageButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CLOSE" android:textSize="11sp" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/appVersionText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="v0.67 • CUE CAPTURE FIX"
-        android:textColor="#FFFFFFFF"
-        android:textSize="10sp"
-        android:textStyle="bold"
-        android:background="#66000000"
-        android:paddingHorizontal="6dp"
-        android:paddingVertical="2dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginBottom="6dp"
-        app:layout_constraintBottom_toTopOf="@id/controlStrip"
-        app:layout_constraintEnd_toEndOf="parent" />
+    <TextView android:id="@+id/appVersionText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="v0.69 • ADAPTIVE OBSERVER" android:textColor="#FFFFFFFF" android:textSize="10sp" android:textStyle="bold" android:background="#66000000" android:paddingHorizontal="6dp" android:paddingVertical="2dp" android:layout_marginEnd="8dp" android:layout_marginBottom="6dp" app:layout_constraintBottom_toTopOf="@id/controlStrip" app:layout_constraintEnd_toEndOf="parent" />
 
     <LinearLayout android:id="@+id/controlStrip" android:layout_width="0dp" android:layout_height="148dp" android:orientation="vertical" android:background="#F0141414" android:padding="3dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
         <LinearLayout android:layout_width="match_parent" android:layout_height="50dp" android:orientation="horizontal" android:gravity="center_vertical">
@@ -163,8 +111,9 @@
             <TextView android:id="@+id/brightnessPercent" android:layout_width="0dp" android:layout_weight="0.7" android:layout_height="match_parent" android:gravity="center" android:text="70%" android:textColor="#FFFFFF" android:textSize="9sp" />
         </LinearLayout>
         <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal" android:gravity="center_vertical">
-            <Button android:id="@+id/cloudUsageButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:text="CLOUD USAGE" android:textSize="10sp" />
-            <TextView android:id="@+id/cloudCounterText" android:layout_width="0dp" android:layout_weight="2" android:layout_height="match_parent" android:gravity="center" android:text="CLOUD 0 SESSION • 0/30 TODAY • 0/900 MONTH" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="9sp" />
+            <Button android:id="@+id/opticalModeButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:text="OPTICAL AUTO" android:textSize="8sp" />
+            <Button android:id="@+id/cloudUsageButton" android:layout_width="0dp" android:layout_weight="0.9" android:layout_height="match_parent" android:text="CLOUD" android:textSize="9sp" />
+            <TextView android:id="@+id/cloudCounterText" android:layout_width="0dp" android:layout_weight="1.8" android:layout_height="match_parent" android:gravity="center" android:text="CLOUD 0 • 0/30 • 0/900" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="8sp" />
         </LinearLayout>
     </LinearLayout>
 

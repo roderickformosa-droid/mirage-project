@@ -41,10 +41,15 @@ class WindFusionEngine {
 
         val evidence = mutableListOf<Evidence>()
         if (mirageDetected && mirageClockAngleDeg.isFinite()) {
+            // Mirage contributes a deliberately broad strength bracket. Signal strength is NOT a direct anemometer;
+            // this only prevents false precision while still giving the field UI a usable estimated range.
+            val m = mirageSignalScore.coerceIn(0.0, 1.0)
+            val mirageMin = when { m < 0.35 -> 0.5; m < 0.60 -> 1.0; m < 0.80 -> 2.0; else -> 3.0 }
+            val mirageMax = when { m < 0.35 -> 3.0; m < 0.60 -> 5.0; m < 0.80 -> 7.0; else -> 9.0 }
             evidence += Evidence(
                 "MIRAGE", mirageClockAngleDeg,
-                (0.55 + 0.45 * mirageSignalScore.coerceIn(0.0, 1.0)),
-                mirageStable, null, null
+                (0.48 + 0.32 * m),
+                mirageStable, mirageMin, mirageMax
             )
         }
 
@@ -52,9 +57,11 @@ class WindFusionEngine {
             val semantic = cueSemanticWeight(q.label)
             val w = semantic * q.confidence.coerceIn(0.0, 1.0)
             if (w >= 0.12 && q.clockAngleDeg.isFinite()) {
+                val speedEligible = semantic >= 0.58
                 evidence += Evidence(
                     cleanLabel(q.label), q.clockAngleDeg, w, q.stable,
-                    q.estimatedWindMinMps, q.estimatedWindMaxMps
+                    if (speedEligible) q.estimatedWindMinMps else null,
+                    if (speedEligible) q.estimatedWindMaxMps else null
                 )
             }
         }
@@ -126,7 +133,7 @@ class WindFusionEngine {
         val s = label.uppercase()
         return when {
             "SMOKE" in s || "FOG" in s || "MIST" in s || "DUST" in s -> 1.00
-            "FLAG" in s || "FABRIC" in s || "RIBBON" in s -> 0.95
+            "FLAG" in s || "FABRIC" in s || "RIBBON" in s || "PENNANT" in s || "WINDSOCK" in s || "LAUNDRY" in s || "TOWEL" in s || "SAIL" in s || "WIND INDICATOR" in s -> 0.95
             "GRASS" in s || "LEAF" in s || "FOLIAGE" in s -> 0.82
             "TWIG" in s || "REED" in s || "ROPE" in s || "LINE" in s -> 0.72
             "BRANCH" in s || "PALM FROND" in s -> 0.58

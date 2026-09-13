@@ -94,5 +94,15 @@ data class AnalysisResult(
     val aggregateWindMinMps: Double = 0.0,
     val aggregateWindMaxMps: Double = 0.0,
     val aggregateStableForSec: Double = 0.0,
-    val aggregateDirectionAgreement: Double = 0.0
+    val aggregateDirectionAgreement: Double = 0.0,
+
+    // v0.68 user-facing state machine / evidence accumulation
+    val opticalMode: String = "DETECTING",
+    val opticalModeConfidence: Double = 0.0,
+    val analysisStage: String = "DETECTING SCENE",
+    val learningPercent: Int = 0,
+    val learningUseful: Boolean = false,
+    val trackedCueCount: Int = 0,
+    val primaryCueLabel: String = "NONE",
+    val primaryCueConfidence: Double = 0.0
 )

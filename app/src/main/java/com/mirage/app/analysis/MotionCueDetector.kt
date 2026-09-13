@@ -103,10 +103,13 @@ class MotionCueDetector {
             // Treat local deformation/change as motion energy as well as centroid translation.
             val roi = Mat(diff, c.rect)
             val deformation = Core.mean(roi).`val`[0]
+            val flagOrientation = estimateFlagFreeEndDirection(roi, c.rect)
             roi.release()
             val deformationSpeed = (deformation / 255.0) * stabilizedGray.cols() * 0.55
             val speed = max(translationSpeed, deformationSpeed)
-            val angle = if (translationSpeed > 1.5) vectorToClockAngle(dx, dy) else track.angleDeg
+            // For elongated fabric-like regions, estimate the low-motion attachment side vs the
+            // higher-motion free edge. This is more useful than instantaneous flutter vectors.
+            val angle = flagOrientation ?: if (translationSpeed > 1.5) vectorToClockAngle(dx, dy) else track.angleDeg
 
             // Stability = direction and speed remain broadly repeatable. Ignore near-static jitter.
             val angleDelta = angularDistance(angle, track.angleDeg)
@@ -158,14 +161,39 @@ class MotionCueDetector {
 
     private fun classify(aspect: Double, areaFrac: Double, speed: Double, rect: Rect): String {
         return when {
-            // Long thin moving region is commonly cloth/flag/ribbon in a distant scene.
+            // Geometry can suggest fabric, but we do not guess foliage from motion alone anymore.
             (aspect > 1.8 || aspect < 0.56) && areaFrac > 0.0006 -> "FLAG/FABRIC-LIKE"
-            // Compact, relatively fast region is more consistent with a leaf/debris/bird-like moving item.
-            areaFrac < 0.008 && speed > 18.0 -> "AIRBORNE OBJECT"
-            // Larger distributed movement is often vegetation/branches.
-            areaFrac > 0.006 && rect.width > 24 && rect.height > 18 -> "FOLIAGE-LIKE"
-            else -> "MOVING OBJECT"
+            areaFrac < 0.006 && speed > 24.0 -> "WIND-SENSITIVE MOTION"
+            else -> "WIND-SENSITIVE MOTION"
         }
+    }
+
+    /**
+     * For an elongated moving patch, the attachment side of a flag/drapery normally moves less
+     * than its free edge. Compare motion energy at opposite ends and point toward the freer end.
+     * Returns null when the evidence is not asymmetric enough to be useful.
+     */
+    private fun estimateFlagFreeEndDirection(diffRoi: Mat, rect: Rect): Double? {
+        if (diffRoi.empty()) return null
+        val aspect = rect.width.toDouble() / rect.height.toDouble().coerceAtLeast(1.0)
+        if (aspect in 0.70..1.45) return null
+        return if (aspect > 1.45 && diffRoi.cols() >= 8) {
+            val q = max(2, diffRoi.cols() / 4)
+            val left = Mat(diffRoi, Rect(0, 0, q, diffRoi.rows()))
+            val right = Mat(diffRoi, Rect(diffRoi.cols() - q, 0, q, diffRoi.rows()))
+            val lm = Core.mean(left).`val`[0]; val rm = Core.mean(right).`val`[0]
+            left.release(); right.release()
+            val ratio = max(lm, rm) / max(1.0, min(lm, rm))
+            if (ratio < 1.14) null else if (rm > lm) 90.0 else 270.0
+        } else if (diffRoi.rows() >= 8) {
+            val q = max(2, diffRoi.rows() / 4)
+            val top = Mat(diffRoi, Rect(0, 0, diffRoi.cols(), q))
+            val bottom = Mat(diffRoi, Rect(0, diffRoi.rows() - q, diffRoi.cols(), q))
+            val tm = Core.mean(top).`val`[0]; val bm = Core.mean(bottom).`val`[0]
+            top.release(); bottom.release()
+            val ratio = max(tm, bm) / max(1.0, min(tm, bm))
+            if (ratio < 1.14) null else if (bm > tm) 180.0 else 0.0
+        } else null
     }
 
     private fun estimateWindRange(label: String, speedPxPerSec: Double, frameWidth: Int, stable: Boolean): Pair<Double, Double> {
