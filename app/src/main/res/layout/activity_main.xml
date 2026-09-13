@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#000000">
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#050708">
 
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
@@ -13,107 +13,117 @@
     <com.mirage.app.ui.WindCueOverlayView android:id="@+id/windCueOverlay" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" />
     <com.mirage.app.ui.DebugOverlayView android:id="@+id/debugOverlay" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" />
 
-    <TextView
-        android:id="@+id/opticalModeText"
-        android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_marginTop="10dp" android:layout_marginStart="10dp"
-        android:background="#99000000" android:paddingHorizontal="9dp" android:paddingVertical="5dp"
-        android:text="DETECTING OPTICAL MODE" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="10sp"
+    <!-- Compact mode control. Tap cycles AUTO / PHONE / SPOTTING SCOPE. -->
+    <Button
+        android:id="@+id/opticalModeButton"
+        android:layout_width="wrap_content" android:layout_height="42dp"
+        android:layout_marginStart="14dp" android:layout_marginTop="14dp"
+        android:minHeight="0dp" android:minWidth="0dp" android:paddingHorizontal="14dp"
+        android:text="MODE AUTO" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp"
+        android:backgroundTint="#B52C3741"
         app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" />
 
     <TextView
-        android:id="@+id/analysisStageText"
+        android:id="@+id/opticalModeText"
         android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_marginTop="6dp" android:background="#99000000"
-        android:paddingHorizontal="8dp" android:paddingVertical="3dp"
-        android:text="SCANNING" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="10sp"
-        app:layout_constraintTop_toBottomOf="@id/opticalModeText" app:layout_constraintStart_toStartOf="@id/opticalModeText" />
+        android:layout_marginStart="8dp" android:background="#8A101419" android:paddingHorizontal="8dp" android:paddingVertical="5dp"
+        android:text="DETECTING" android:textColor="#DFFFFFFF" android:textSize="9sp"
+        app:layout_constraintStart_toEndOf="@id/opticalModeButton" app:layout_constraintTop_toTopOf="@id/opticalModeButton" app:layout_constraintBottom_toBottomOf="@id/opticalModeButton" />
 
+    <!-- Small stage + evidence line, kept away from the visual centre. -->
     <LinearLayout
         android:id="@+id/learningPanel"
         android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_marginStart="10dp" android:layout_marginEnd="10dp" android:layout_marginTop="5dp"
-        android:orientation="vertical" android:padding="5dp" android:background="#76000000"
-        app:layout_constraintTop_toBottomOf="@id/analysisStageText" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView">
-        <TextView android:id="@+id/learningText" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="LEARNING 0%" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="10sp" android:gravity="center" />
-        <ProgressBar android:id="@+id/learningProgress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="7dp" android:layout_marginTop="3dp" android:max="100" android:progress="0" />
-        <TextView android:id="@+id/learningDetailText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="SEARCHING FOR USABLE WIND CUES" android:textColor="#D8FFFFFF" android:textSize="8sp" android:gravity="center" />
-        <TextView android:id="@+id/scopeGuidanceText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="" android:textColor="#FFE082" android:textStyle="bold" android:textSize="8sp" android:gravity="center" android:visibility="gone" />
+        android:layout_marginStart="14dp" android:layout_marginEnd="14dp" android:layout_marginTop="8dp"
+        android:orientation="vertical" android:padding="6dp" android:background="#70101419"
+        app:layout_constraintTop_toBottomOf="@id/opticalModeButton" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:id="@+id/analysisStageText" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="SCANNING" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="10sp" />
+            <TextView android:id="@+id/learningText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="LEARNING 0%" android:textColor="#DFFFFFFF" android:textStyle="bold" android:textSize="10sp" />
+        </LinearLayout>
+        <ProgressBar android:id="@+id/learningProgress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="5dp" android:layout_marginTop="4dp" android:max="100" android:progress="0" />
+        <TextView android:id="@+id/learningDetailText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="SEARCHING FOR USABLE CUES" android:textColor="#BFFFFFFF" android:textSize="8sp" />
+        <TextView android:id="@+id/scopeGuidanceText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="" android:textColor="#FFE082" android:textStyle="bold" android:textSize="8sp" android:visibility="gone" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/signalQualityText"
-        android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_marginTop="8dp" android:background="#78000000"
-        android:paddingHorizontal="10dp" android:paddingVertical="5dp"
-        android:text="SCANNING" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="13sp" android:gravity="center"
-        app:layout_constraintTop_toBottomOf="@id/learningPanel" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+    <!-- Top-view visual appears only with a published result. -->
+    <LinearLayout
+        android:id="@+id/windVisualPanel"
+        android:layout_width="152dp" android:layout_height="126dp"
+        android:orientation="vertical" android:padding="9dp" android:background="#D31A252E" android:visibility="gone"
+        android:layout_marginTop="10dp" android:layout_marginEnd="14dp" android:elevation="8dp"
+        app:layout_constraintTop_toBottomOf="@id/learningPanel" app:layout_constraintEnd_toEndOf="@id/previewView">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="WIND VISUAL" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="9sp" />
+        <com.mirage.app.ui.WindDirectionVisualView android:id="@+id/windDirectionVisual" android:layout_width="match_parent" android:layout_height="70dp" />
+        <TextView android:id="@+id/windVisualLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="9sp" android:gravity="center" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/windArrowText"
-        android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_marginTop="2dp" android:background="#78000000"
-        android:paddingHorizontal="12dp" android:paddingVertical="1dp"
-        android:text="→" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="34sp" android:gravity="center" android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/signalQualityText" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+    <!-- Clean result card. Hidden until the algorithm has a real result. -->
+    <LinearLayout
+        android:id="@+id/resultCard"
+        android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_marginStart="22dp" android:layout_marginEnd="22dp" android:layout_marginBottom="16dp"
+        android:orientation="vertical" android:padding="12dp" android:background="#E10B1611" android:visibility="gone" android:elevation="10dp"
+        app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView">
+        <TextView android:id="@+id/signalQualityText" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="STABLE CONDITION" android:textColor="#35E66F" android:textStyle="bold" android:textSize="15sp" />
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="7dp" android:background="#5535E66F" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/windArrowText" android:layout_width="82dp" android:layout_height="wrap_content" android:text="←" android:textColor="#35E66F" android:textStyle="bold" android:textSize="50sp" android:gravity="center" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="8dp">
+                <TextView android:id="@+id/windDetailText" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="3–5 mph EST." android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="28sp" />
+                <TextView android:id="@+id/windSideText" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Right Wind • going left" android:textColor="#E6FFFFFF" android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/resultMessageText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="Consistent movement detected." android:textColor="#D8FFFFFF" android:textSize="10sp" />
+        <TextView android:id="@+id/cueEvidenceText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:text="FLAG • FOLIAGE • MIRAGE" android:textColor="#BFFFFFFF" android:textSize="9sp" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/windDetailText"
-        android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_marginTop="2dp" android:background="#65000000"
-        android:paddingHorizontal="7dp" android:paddingVertical="3dp"
-        android:text="" android:textColor="#FFFFFF" android:textSize="9sp" android:gravity="center"
-        app:layout_constraintTop_toBottomOf="@id/windArrowText" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
-
-    <TextView android:id="@+id/targetHudText" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" android:layout_marginTop="0dp" android:background="#00000000" android:paddingHorizontal="0dp" android:paddingVertical="0dp" android:fontFamily="monospace" android:gravity="center" android:text="" android:textColor="#FFFFFF" android:textSize="1sp" app:layout_constraintTop_toBottomOf="@id/windDetailText" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+    <TextView android:id="@+id/targetHudText" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
     <TextView android:id="@+id/readoutText" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
+    <TextView android:id="@+id/navRangeText" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
 
     <Button android:id="@+id/resumeButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RESUME" android:textStyle="bold" android:visibility="gone" android:enabled="false" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView" />
 
-    <TextView android:id="@+id/brandWatermark" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="54dp" android:background="#52000000" android:paddingHorizontal="8dp" android:paddingVertical="3dp" android:text="RifletalksTechnologies" android:textColor="#D9FFFFFF" android:textSize="11sp" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" />
+    <TextView android:id="@+id/brandWatermark" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="8dp" android:background="#45000000" android:paddingHorizontal="7dp" android:paddingVertical="2dp" android:text="RifletalksTechnologies" android:textColor="#CAFFFFFF" android:textSize="9sp" android:textStyle="bold" app:layout_constraintBottom_toTopOf="@id/resultCard" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" />
 
     <LinearLayout
         android:id="@+id/feedbackPanel"
-        android:layout_width="0dp" android:layout_height="44dp"
-        android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:layout_marginBottom="4dp"
-        android:orientation="horizontal" android:gravity="center" android:background="#B0101010" android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/previewView" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView">
-        <Button android:id="@+id/feedbackAgree" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="✓ AGREE" android:textSize="10sp" />
-        <Button android:id="@+id/feedbackUnsure" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="NOT SURE" android:textSize="10sp" />
-        <Button android:id="@+id/feedbackDisagree" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="✕ DISAGREE" android:textSize="10sp" />
+        android:layout_width="0dp" android:layout_height="38dp"
+        android:layout_marginStart="22dp" android:layout_marginEnd="22dp" android:layout_marginBottom="6dp"
+        android:orientation="horizontal" android:gravity="center" android:background="#DA101010" android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/resultCard" app:layout_constraintStart_toStartOf="@id/resultCard" app:layout_constraintEnd_toEndOf="@id/resultCard">
+        <Button android:id="@+id/feedbackAgree" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="AGREE" android:textSize="9sp" />
+        <Button android:id="@+id/feedbackUnsure" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="NOT SURE" android:textSize="9sp" />
+        <Button android:id="@+id/feedbackDisagree" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="DISAGREE" android:textSize="9sp" />
     </LinearLayout>
 
     <LinearLayout android:id="@+id/cloudUsagePanel" android:layout_width="300dp" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp" android:background="#F0202020" android:visibility="gone" android:elevation="12dp" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView" app:layout_constraintTop_toTopOf="@id/previewView" app:layout_constraintBottom_toBottomOf="@id/previewView">
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CLOUD AI USAGE" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="18sp" android:gravity="center" />
-        <TextView android:id="@+id/cloudUsageText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Session: 0\nToday: 0 / 30\nThis month: 0 / 900\nEstimated device cost: €0.00" android:textColor="#FFFFFF" android:textSize="15sp" android:lineSpacingExtra="5dp" />
-        <TextView android:id="@+id/cloudUsageNote" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="App counters are per device. Google Cloud Console is authoritative for project-wide usage and billing." android:textColor="#CFCFCF" android:textSize="11sp" />
+        <TextView android:id="@+id/cloudUsageText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Session: 0\nToday: 0 / 30\nThis month: 0 / 900" android:textColor="#FFFFFF" android:textSize="15sp" />
+        <TextView android:id="@+id/cloudUsageNote" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Device counters are local. Google Cloud Console is authoritative." android:textColor="#CFCFCF" android:textSize="11sp" />
         <Button android:id="@+id/openCloudConsoleButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="OPEN GOOGLE CLOUD USAGE" android:textSize="11sp" />
         <Button android:id="@+id/closeCloudUsageButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CLOSE" android:textSize="11sp" />
     </LinearLayout>
 
-    <TextView android:id="@+id/appVersionText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="v0.70 • FIELD HOTFIX" android:textColor="#FFFFFFFF" android:textSize="10sp" android:textStyle="bold" android:background="#66000000" android:paddingHorizontal="6dp" android:paddingVertical="2dp" android:layout_marginEnd="8dp" android:layout_marginBottom="6dp" app:layout_constraintBottom_toTopOf="@id/controlStrip" app:layout_constraintEnd_toEndOf="parent" />
+    <TextView android:id="@+id/appVersionText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="v0.71 • VISUAL WIND" android:textColor="#DFFFFFFF" android:textSize="9sp" android:textStyle="bold" android:background="#55000000" android:paddingHorizontal="5dp" android:paddingVertical="2dp" android:layout_marginEnd="7dp" android:layout_marginBottom="4dp" app:layout_constraintBottom_toTopOf="@id/controlStrip" app:layout_constraintEnd_toEndOf="parent" />
 
-    <LinearLayout android:id="@+id/controlStrip" android:layout_width="0dp" android:layout_height="120dp" android:orientation="vertical" android:background="#F0141414" android:padding="3dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="34dp" android:orientation="horizontal" android:gravity="center_vertical">
-            <ToggleButton android:id="@+id/focusLockToggle" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:textOn="FOCUS LOCK" android:textOff="FOCUS AUTO" android:textSize="9sp" />
-            <ToggleButton android:id="@+id/exposureLockToggle" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:textOn="EXP LOCK" android:textOff="EXP AUTO" android:textSize="9sp" />
-            <Button android:id="@+id/locationButton" android:layout_width="0dp" android:layout_weight="0.8" android:layout_height="match_parent" android:text="GPS OFF" android:textSize="9sp" />
-            <TextView android:id="@+id/temperatureText" android:layout_width="0dp" android:layout_weight="1.35" android:layout_height="match_parent" android:gravity="center" android:text="BATTERY TEMP --" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="9sp" />
-            <Button android:id="@+id/recordButton" android:layout_width="0dp" android:layout_weight="0.9" android:layout_height="match_parent" android:text="RECORD" android:textSize="9sp" />
+    <!-- Minimal field controls; advanced controls remain available but do not cover the camera. -->
+    <LinearLayout android:id="@+id/controlStrip" android:layout_width="0dp" android:layout_height="104dp" android:orientation="vertical" android:background="#F20A0D10" android:padding="4dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical">
+            <Button android:id="@+id/zoomMinus" android:layout_width="48dp" android:layout_height="match_parent" android:text="−" android:textSize="18sp" />
+            <TextView android:id="@+id/zoomText" android:layout_width="56dp" android:layout_height="match_parent" android:gravity="center" android:text="1.0x" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="10sp" />
+            <Button android:id="@+id/zoomPlus" android:layout_width="48dp" android:layout_height="match_parent" android:text="+" android:textSize="18sp" />
+            <Button android:id="@+id/focusButtonDummy" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="FOCUS" android:textSize="9sp" android:visibility="gone" />
+            <Button android:id="@+id/recordButton" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="● RECORD" android:textSize="10sp" />
+            <Button android:id="@+id/locationButton" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="GPS OFF" android:textSize="9sp" />
+            <Button android:id="@+id/cloudUsageButton" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="CLOUD" android:textSize="9sp" />
         </LinearLayout>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal" android:gravity="center_vertical">
-            <Button android:id="@+id/zoomMinus" android:layout_width="0dp" android:layout_weight="0.55" android:layout_height="match_parent" android:text="−" android:textSize="18sp" />
-            <TextView android:id="@+id/zoomText" android:layout_width="0dp" android:layout_weight="0.85" android:layout_height="match_parent" android:gravity="center" android:text="1.0x" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="10sp" />
-            <Button android:id="@+id/zoomPlus" android:layout_width="0dp" android:layout_weight="0.55" android:layout_height="match_parent" android:text="+" android:textSize="18sp" />
-            <Button android:id="@+id/voiceZoomButton" android:layout_width="0dp" android:layout_weight="0.9" android:layout_height="match_parent" android:text="VOICE" android:textSize="9sp" />
-            <ToggleButton android:id="@+id/autoBrightnessToggle" android:layout_width="0dp" android:layout_weight="1.05" android:layout_height="match_parent" android:textOn="BRIGHT AUTO" android:textOff="BRIGHT MAN" android:textSize="8sp" />
-            <SeekBar android:id="@+id/brightnessSeek" android:layout_width="0dp" android:layout_weight="1.15" android:layout_height="match_parent" android:max="100" android:progress="70" />
-            <TextView android:id="@+id/brightnessPercent" android:layout_width="0dp" android:layout_weight="0.7" android:layout_height="match_parent" android:gravity="center" android:text="70%" android:textColor="#FFFFFF" android:textSize="9sp" />
-        </LinearLayout>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal" android:gravity="center_vertical">
-            <Button android:id="@+id/opticalModeButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:text="OPTICAL AUTO" android:textSize="8sp" />
-            <Button android:id="@+id/cloudUsageButton" android:layout_width="0dp" android:layout_weight="0.9" android:layout_height="match_parent" android:text="CLOUD" android:textSize="9sp" />
-            <TextView android:id="@+id/cloudCounterText" android:layout_width="0dp" android:layout_weight="1.8" android:layout_height="match_parent" android:gravity="center" android:text="CLOUD 0 • 0/30 • 0/900" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="8sp" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical">
+            <ToggleButton android:id="@+id/focusLockToggle" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:textOn="FOCUS LOCK" android:textOff="FOCUS AUTO" android:textSize="8sp" />
+            <ToggleButton android:id="@+id/exposureLockToggle" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:textOn="EXP LOCK" android:textOff="EXP AUTO" android:textSize="8sp" />
+            <Button android:id="@+id/voiceZoomButton" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="0.8" android:text="VOICE" android:textSize="8sp" />
+            <TextView android:id="@+id/temperatureText" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1.35" android:gravity="center" android:text="BATTERY TEMP --" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="8sp" />
+            <TextView android:id="@+id/cloudCounterText" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1.15" android:gravity="center" android:text="0/30 • 0/900" android:textColor="#DFFFFFFF" android:textSize="7sp" />
         </LinearLayout>
     </LinearLayout>
 
@@ -126,7 +136,9 @@
         <EditText android:id="@+id/scopeFovInput" android:layout_width="1dp" android:layout_height="1dp" android:text="2.0" />
         <ToggleButton android:id="@+id/seaLevelToggle" android:layout_width="1dp" android:layout_height="1dp" />
         <ToggleButton android:id="@+id/targetHudToggle" android:layout_width="1dp" android:layout_height="1dp" />
-        <TextView android:id="@+id/navRangeText" android:layout_width="1dp" android:layout_height="1dp" />
+        <ToggleButton android:id="@+id/autoBrightnessToggle" android:layout_width="1dp" android:layout_height="1dp" />
+        <SeekBar android:id="@+id/brightnessSeek" android:layout_width="1dp" android:layout_height="1dp" android:max="100" android:progress="70" />
+        <TextView android:id="@+id/brightnessPercent" android:layout_width="1dp" android:layout_height="1dp" />
         <com.mirage.app.ui.GraphView android:id="@+id/graphActivity" android:layout_width="1dp" android:layout_height="1dp" />
         <com.mirage.app.ui.GraphView android:id="@+id/graphAngle" android:layout_width="1dp" android:layout_height="1dp" />
         <com.mirage.app.ui.GraphView android:id="@+id/graphMagnitude" android:layout_width="1dp" android:layout_height="1dp" />

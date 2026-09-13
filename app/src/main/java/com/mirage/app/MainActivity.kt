@@ -509,10 +509,9 @@ class MainActivity : AppCompatActivity() {
             binding.feedbackPanel.visibility = View.GONE
         } else {
             binding.signalQualityText.clearAnimation()
-            binding.windArrowText.visibility = View.GONE
-            binding.signalQualityText.text = r.analysisStage
-            binding.signalQualityText.setBackgroundColor(0x99555555.toInt())
-            binding.windDetailText.text = if (r.primaryCueLabel.isNotBlank()) "${r.primaryCueLabel} • ${r.learningPercent}%" else ""
+            binding.windArrowText.clearAnimation()
+            binding.resultCard.visibility = View.GONE
+            binding.windVisualPanel.visibility = View.GONE
             binding.feedbackPanel.visibility = View.GONE
         }
 
@@ -543,35 +542,95 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPublishedWind(r: AnalysisResult, current: Boolean) {
         val arrow = directionArrow(r.aggregateWindClockDirection)
-        val speed = "%.1f–%.1f m/s EST.".format(r.aggregateWindMinMps, r.aggregateWindMaxMps)
-        val prefix = if (current) "" else "LAST ESTIMATE • "
         val stable = r.aggregateWindState == "STABLE"
         val changing = r.aggregateWindState == "CHANGING"
-        binding.signalQualityText.text = when {
-            stable -> "${prefix}STABLE CONDITION"
-            changing -> "${prefix}CHANGING CONDITION"
-            else -> "${prefix}WIND CONDITION"
-        }
+        val side = windSideLabel(r.aggregateWindClockDirection)
+        val going = windGoingLabel(r.aggregateWindClockDirection)
+        val (lowMph, highMph) = mphBracket(r.aggregateWindMinMps, r.aggregateWindMaxMps)
+
+        binding.resultCard.visibility = View.VISIBLE
+        binding.windVisualPanel.visibility = View.VISIBLE
         binding.windArrowText.visibility = View.VISIBLE
         binding.windArrowText.text = arrow
-        binding.signalQualityText.setBackgroundColor(when {
-            stable && current -> 0xCC087A22.toInt()
-            changing && current -> 0xCCAA0000.toInt()
-            else -> 0x99555555.toInt()
+        binding.windDetailText.text = "$lowMph–$highMph mph EST."
+        binding.windSideText.text = "$side • $going"
+        binding.cueEvidenceText.text = cueEvidenceLabel(r.aggregateWindSources, r.sufficientSignal)
+        binding.resultMessageText.text = when {
+            stable && current -> "Consistent movement detected across the current observation window."
+            changing && current -> "Wind cues are changing; continuing to analyse the scene."
+            else -> "Recent estimate; continuing to scan for updated visual evidence."
+        }
+        binding.signalQualityText.text = when {
+            stable -> "● STABLE CONDITION"
+            changing -> "● CHANGING CONDITION"
+            else -> "WIND CONDITION"
+        }
+        binding.signalQualityText.setTextColor(when {
+            stable && current -> 0xFF35E66F.toInt()
+            changing && current -> 0xFFFF6B6B.toInt()
+            else -> 0xFFE0E0E0.toInt()
         })
-        binding.windDetailText.text = "$speed • CONF ${(r.aggregateWindConfidence * 100).toInt()}% • ${r.aggregateWindSources}"
+        binding.windArrowText.setTextColor(when {
+            stable && current -> 0xFF35E66F.toInt()
+            changing && current -> 0xFFFFB74D.toInt()
+            else -> 0xFFE0E0E0.toInt()
+        })
+        binding.windVisualLabel.text = "$side\n$going"
+        binding.windDirectionVisual.setWind(r.aggregateWindClockDirection, stable && current)
+
         binding.signalQualityText.clearAnimation()
         binding.windArrowText.clearAnimation()
         if (current && (stable || changing)) {
-            val pulse = AlphaAnimation(1.0f, 0.50f).apply {
+            val pulse = AlphaAnimation(1.0f, if (stable) 0.62f else 0.72f).apply {
                 duration = if (stable) 700L else 500L
                 repeatMode = Animation.REVERSE
                 repeatCount = Animation.INFINITE
             }
             binding.signalQualityText.startAnimation(pulse)
-            if (stable) binding.windArrowText.startAnimation(AlphaAnimation(1.0f, 0.58f).apply {
+            if (stable) binding.windArrowText.startAnimation(AlphaAnimation(1.0f, 0.62f).apply {
                 duration = 700L; repeatMode = Animation.REVERSE; repeatCount = Animation.INFINITE
             })
+        }
+    }
+
+    /** Two-mile-per-hour field bracket, always marked EST. to avoid false precision. */
+    private fun mphBracket(minMps: Double, maxMps: Double): Pair<Int, Int> {
+        val midpointMph = ((minMps + maxMps) * 0.5 * 2.236936).coerceAtLeast(0.0)
+        val center = kotlin.math.round(midpointMph).toInt()
+        val low = maxOf(0, center - 1)
+        return low to (low + 2)
+    }
+
+    /** "Right wind" means the observed flow is travelling from right toward left. */
+    private fun windSideLabel(clock: String): String {
+        val hour = clock.substringBefore(" ").toIntOrNull() ?: return "Variable wind"
+        return when (hour) {
+            7, 8, 9, 10, 11 -> "Right Wind"
+            1, 2, 3, 4, 5 -> "Left Wind"
+            else -> "Head/Tail Wind"
+        }
+    }
+
+    private fun windGoingLabel(clock: String): String {
+        val hour = clock.substringBefore(" ").toIntOrNull() ?: return "direction changing"
+        return when (hour) {
+            7, 8, 9, 10, 11 -> "going left"
+            1, 2, 3, 4, 5 -> "going right"
+            12 -> "moving up-frame"
+            6 -> "moving down-frame"
+            else -> "direction changing"
+        }
+    }
+
+    private fun cueEvidenceLabel(sources: String, mirageDetected: Boolean): String {
+        val normalized = sources.replace("+", " • ").replace(",", " • ").trim()
+        return buildString {
+            if (normalized.isNotBlank() && normalized != "NONE") append(normalized)
+            if (mirageDetected && !normalized.contains("MIRAGE", ignoreCase = true)) {
+                if (isNotEmpty()) append(" • ")
+                append("MIRAGE")
+            }
+            if (isEmpty()) append("VISUAL WIND CUES")
         }
     }
 
