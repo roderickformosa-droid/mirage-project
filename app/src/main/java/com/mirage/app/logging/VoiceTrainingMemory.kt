@@ -27,7 +27,7 @@ class VoiceTrainingMemory(private val context: Context) {
 
     fun store(command: String, result: AnalysisResult?): Stats {
         val ts = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date())
-        val cue = result?.aggregateWindSources?.joinToString("+") ?: ""
+        val cue = result?.aggregateWindSources ?: ""
         val dir = result?.aggregateWindClockDirection ?: ""
         val minMph = result?.aggregateWindMinMps?.times(2.2369362920544) ?: 0.0
         val maxMph = result?.aggregateWindMaxMps?.times(2.2369362920544) ?: 0.0
