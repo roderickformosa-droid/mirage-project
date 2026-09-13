@@ -35,7 +35,7 @@ class VoiceTrainingMemory(private val context: Context) {
             ts, command, cue, result?.aggregateWindState ?: "", dir,
             "%.1f".format(Locale.US, minMph), "%.1f".format(Locale.US, maxMph),
             result?.trackedCueCount ?: 0, result?.learningPercent ?: 0, result?.opticalMode ?: ""
-        ).joinToString(",") { it.replace(",", " ") }
+        ).joinToString(",") { it.toString().replace(",", " ") }
         csv.appendText(line + "\n")
         val n = prefs.getInt("samples", 0) + 1
         prefs.edit().putInt("samples", n).apply()
