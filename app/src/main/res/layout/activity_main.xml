@@ -133,7 +133,7 @@
         android:id="@+id/appVersionText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="v0.66 • WIND FUSION"
+        android:text="v0.67 • CUE CAPTURE FIX"
         android:textColor="#FFFFFFFF"
         android:textSize="10sp"
         android:textStyle="bold"

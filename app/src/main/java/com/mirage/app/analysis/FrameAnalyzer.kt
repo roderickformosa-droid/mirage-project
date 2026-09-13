@@ -76,7 +76,9 @@ class FrameAnalyzer(
             val (stabilizedU8, stabInfo) = stabilizer.process(rotated)
             val sceneLuma = Core.mean(stabilizedU8).`val`[0]
 
-            var motionCues = if (!stabInfo.disturbance && stabInfo.trackingOk) motionCueDetector.process(stabilizedU8, cameraTimestampNs) else emptyList()
+            // Flexible wind cues (flags, foliage, grass) can themselves look like a scene disturbance.
+            // Do not suppress cue detection just because the stabilizer reports disturbance; only require usable tracking.
+            var motionCues = if (stabInfo.trackingOk) motionCueDetector.process(stabilizedU8, cameraTimestampNs) else emptyList()
             val strongestCue = motionCues.maxByOrNull { it.confidence }
             aiVision.submitCue(stabilizedU8, strongestCue)
             aiVision.latestCue()?.let { ai ->

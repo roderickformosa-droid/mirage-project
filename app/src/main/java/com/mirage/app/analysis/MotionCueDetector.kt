@@ -57,15 +57,17 @@ class MotionCueDetector {
 
         val diff = Mat()
         Core.absdiff(stabilizedGray, prev, diff)
-        Imgproc.GaussianBlur(diff, diff, Size(5.0, 5.0), 0.0)
+        Imgproc.GaussianBlur(diff, diff, Size(3.0, 3.0), 0.0)
 
         // Adaptive-ish threshold from mean + a floor. Keeps tiny shimmer from being mistaken for an object.
         val mean = Core.mean(diff).`val`[0]
-        val threshold = max(12.0, mean * 2.2)
+        val threshold = max(7.0, mean * 1.65)
         val mask = Mat()
         Imgproc.threshold(diff, mask, threshold, 255.0, Imgproc.THRESH_BINARY)
-        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(5.0, 5.0))
-        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, kernel)
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(3.0, 3.0))
+        // Close small gaps so deforming cloth/foliage becomes one usable region.
+        // Avoid aggressive opening: it was erasing thin flag edges and twigs.
+        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, kernel)
         Imgproc.dilate(mask, mask, kernel, Point(-1.0, -1.0), 1)
 
         val contours = mutableListOf<MatOfPoint>()
@@ -75,9 +77,9 @@ class MotionCueDetector {
         val frameArea = stabilizedGray.cols().toDouble() * stabilizedGray.rows().toDouble()
         val candidates = contours.mapNotNull { contour ->
             val area = Imgproc.contourArea(contour)
-            if (area < frameArea * 0.0007 || area > frameArea * 0.30) return@mapNotNull null
+            if (area < frameArea * 0.00018 || area > frameArea * 0.45) return@mapNotNull null
             val rect = Imgproc.boundingRect(contour)
-            if (rect.width < 8 || rect.height < 8) return@mapNotNull null
+            if (rect.width < 5 || rect.height < 5) return@mapNotNull null
             Candidate(rect, area)
         }.sortedByDescending { it.area }.take(5)
 
@@ -96,13 +98,20 @@ class MotionCueDetector {
             matched += track.id
             val dx = center.x - track.center.x
             val dy = center.y - track.center.y
-            val speed = hypot(dx, dy) / dtSec
-            val angle = vectorToClockAngle(dx, dy)
+            val translationSpeed = hypot(dx, dy) / dtSec
+            // A flag can flap vigorously while its bounding-box centre barely moves.
+            // Treat local deformation/change as motion energy as well as centroid translation.
+            val roi = Mat(diff, c.rect)
+            val deformation = Core.mean(roi).`val`[0]
+            roi.release()
+            val deformationSpeed = (deformation / 255.0) * stabilizedGray.cols() * 0.55
+            val speed = max(translationSpeed, deformationSpeed)
+            val angle = if (translationSpeed > 1.5) vectorToClockAngle(dx, dy) else track.angleDeg
 
             // Stability = direction and speed remain broadly repeatable. Ignore near-static jitter.
             val angleDelta = angularDistance(angle, track.angleDeg)
             val speedRatio = if (track.apparentSpeed > 1.0) speed / track.apparentSpeed else 1.0
-            val consistent = speed > 3.0 && angleDelta < 35.0 && speedRatio in 0.55..1.8
+            val consistent = speed > 1.5 && (translationSpeed <= 1.5 || angleDelta < 45.0) && speedRatio in 0.40..2.5
             if (!consistent) track.stableSinceNs = now
 
             track.center = center
@@ -150,11 +159,11 @@ class MotionCueDetector {
     private fun classify(aspect: Double, areaFrac: Double, speed: Double, rect: Rect): String {
         return when {
             // Long thin moving region is commonly cloth/flag/ribbon in a distant scene.
-            (aspect > 2.2 || aspect < 0.45) && areaFrac > 0.0015 -> "FLAG/FABRIC-LIKE"
+            (aspect > 1.8 || aspect < 0.56) && areaFrac > 0.0006 -> "FLAG/FABRIC-LIKE"
             // Compact, relatively fast region is more consistent with a leaf/debris/bird-like moving item.
             areaFrac < 0.008 && speed > 18.0 -> "AIRBORNE OBJECT"
             // Larger distributed movement is often vegetation/branches.
-            areaFrac > 0.012 && rect.width > 35 && rect.height > 25 -> "FOLIAGE-LIKE"
+            areaFrac > 0.006 && rect.width > 24 && rect.height > 18 -> "FOLIAGE-LIKE"
             else -> "MOVING OBJECT"
         }
     }

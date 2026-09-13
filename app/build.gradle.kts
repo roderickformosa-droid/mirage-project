@@ -11,8 +11,8 @@ android {
         applicationId = "com.mirage.app"
         minSdk = 26   // Camera2 manual focus/exposure controls need API 23+; 26 keeps things simpler
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.66-wind-fusion"
+        versionCode = 13
+        versionName = "0.67-cue-capture-fix"
 
         // Optional Google Cloud Vision key. Prefer setting CLOUD_VISION_API_KEY as a
         // GitHub Actions secret/environment variable; blank keeps cloud recognition disabled.
