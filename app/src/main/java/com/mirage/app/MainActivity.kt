@@ -4,6 +4,8 @@ import android.content.pm.PackageManager
 import android.content.Intent
 import android.content.IntentFilter
 import android.speech.RecognizerIntent
+import android.speech.RecognitionListener
+import android.speech.SpeechRecognizer
 import android.os.BatteryManager
 import android.graphics.RectF
 import android.content.res.ColorStateList
@@ -55,6 +57,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var feedbackLogger: UserFeedbackLogger
     private lateinit var voiceTrainingMemory: VoiceTrainingMemory
     private var trainModeActive = false
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var pendingTrainingCueLabel: String? = null
+    private var activeTrainingCueLabel: String? = null
+    private var trainingSampleStoredForLock = false
     private var latestAnalysisResult: AnalysisResult? = null
     private var publishedWindResult: AnalysisResult? = null
     private var lastWindPublishMs = 0L
@@ -211,11 +217,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val trainingVoiceLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode != android.app.Activity.RESULT_OK) return@registerForActivityResult
-        val heard = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()?.lowercase() ?: return@registerForActivityResult
-        handleTrainingVoice(heard)
-    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -231,10 +233,18 @@ class MainActivity : AppCompatActivity() {
         cameraController = CameraController(this, this)
         feedbackLogger = UserFeedbackLogger(this)
         voiceTrainingMemory = VoiceTrainingMemory(this)
+        setupInAppSpeechRecognizer()
         updateTrainingMemoryUi()
         setupFeedbackControls()
         setupCloudUsageControls()
         setupOpticalModeControls()
+        binding.manualRangeInput.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                val meters = binding.manualRangeInput.text?.toString()?.toDoubleOrNull()?.takeIf { it > 0.0 }
+                frameAnalyzer?.setKnownRangeMeters(meters)
+                if (meters != null) binding.knownRangeInput.setText(meters.toString())
+            }
+        }
 
         setupRangeAssist()
         setupDisplayControls()
@@ -295,26 +305,76 @@ class MainActivity : AppCompatActivity() {
         binding.voiceZoomButton.text = if (trainModeActive) "VOICE TRAIN" else "VOICE"
         if (trainModeActive) {
             binding.trainingStatusText.text = "TRAIN MODE • SAY: TRACK FLAG / TRACK FOLIAGE / TRACK MIRAGE"
-            startTrainingVoice()
+        } else {
+            pendingTrainingCueLabel = null
+            activeTrainingCueLabel = null
+            trainingSampleStoredForLock = false
+            frameAnalyzer?.clearManualTrainingCue()
+            binding.roiOverlay.visibility = View.GONE
+        }
+    }
+
+    private fun setupInAppSpeechRecognizer() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+            setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {
+                    if (trainModeActive) binding.trainingStatusText.text = "● LISTENING… KEEP THE CUE IN VIEW"
+                }
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {
+                    if (trainModeActive) binding.trainingStatusText.text = "PROCESSING VOICE…"
+                }
+                override fun onError(error: Int) {
+                    if (trainModeActive) binding.trainingStatusText.text = "VOICE READY • TAP VOICE TRAIN TO TRY AGAIN"
+                }
+                override fun onResults(results: Bundle?) {
+                    val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim()?.lowercase()
+                    if (!heard.isNullOrBlank()) handleTrainingVoice(heard)
+                }
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
         }
     }
 
     private fun startTrainingVoice() {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Microphone permission is required for voice training.", Toast.LENGTH_LONG).show(); return
+        }
+        val recognizer = speechRecognizer
+        if (recognizer == null) {
+            Toast.makeText(this, "Voice recognition is unavailable on this phone.", Toast.LENGTH_LONG).show(); return
+        }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Say what to track or how to correct it")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         }
-        try { trainingVoiceLauncher.launch(intent) }
-        catch (_: Throwable) { Toast.makeText(this, "Voice recognition is unavailable on this phone.", Toast.LENGTH_LONG).show() }
+        try { recognizer.cancel(); recognizer.startListening(intent) }
+        catch (_: Throwable) { Toast.makeText(this, "Voice recognition could not start.", Toast.LENGTH_LONG).show() }
+    }
+
+    private fun requestCueSelection(label: String) {
+        pendingTrainingCueLabel = label
+        activeTrainingCueLabel = null
+        trainingSampleStoredForLock = false
+        frameAnalyzer?.clearManualTrainingCue()
+        binding.roiOverlay.visibility = View.VISIBLE
+        binding.trainingStatusText.text = "TAP THE ${label.lowercase()} IN THE LIVE IMAGE"
+        binding.trainingProgress.progress = 0
     }
 
     private fun handleTrainingVoice(heard: String) {
+        when {
+            "track flag" in heard || heard == "flag" -> { requestCueSelection("FLAG"); return }
+            "track foliage" in heard || "track leaves" in heard || heard == "foliage" -> { requestCueSelection("FOLIAGE"); return }
+            "track mirage" in heard || heard == "mirage" -> { requestCueSelection("MIRAGE"); return }
+        }
         val command = when {
-            "track flag" in heard || heard == "flag" -> "TRACK_FLAG"
-            "track foliage" in heard || "track leaves" in heard || heard == "foliage" -> "TRACK_FOLIAGE"
-            "track mirage" in heard || heard == "mirage" -> "TRACK_MIRAGE"
             "direction correct" in heard || heard == "correct" -> "DIRECTION_CORRECT"
             "direction wrong" in heard || "wrong direction" in heard -> "DIRECTION_WRONG"
             "speed higher" in heard || "wind higher" in heard -> "SPEED_HIGHER"
@@ -326,22 +386,23 @@ class MainActivity : AppCompatActivity() {
             "ignore" in heard -> "IGNORE_CUE"
             else -> "NOTE_${heard.uppercase().replace(Regex("[^A-Z0-9]+"), "_").take(40)}"
         }
-        val stats = voiceTrainingMemory.store(command, latestAnalysisResult)
-        binding.trainingProgress.progress = stats.percent
+        val current = latestAnalysisResult
+        val locked = activeTrainingCueLabel != null && current?.motionCues?.any { it.label.contains("USER LOCK", true) } == true
+        if (!locked) {
+            binding.trainingStatusText.text = "NOT STORED • FIRST LOCK A CUE AND LET IT MOVE"
+            return
+        }
+        val stats = voiceTrainingMemory.store(command, current)
         binding.trainingMemoryText.text = "LEARNING MEMORY ${stats.samples} / ${stats.target} • STORED"
         binding.trainingStatusText.text = when (command) {
-            "TRACK_FLAG" -> "LEARNED: FLAG IS THE CUE • TRACKING MEMORY STORED"
-            "TRACK_FOLIAGE" -> "LEARNED: FOLIAGE IS THE CUE • TRACKING MEMORY STORED"
-            "TRACK_MIRAGE" -> "LEARNED: MIRAGE REGION • TRACKING MEMORY STORED"
-            "DIRECTION_CORRECT" -> "LEARNED: DIRECTION WAS CORRECT"
-            "DIRECTION_WRONG" -> "LEARNED: DIRECTION NEEDS CORRECTION"
-            "SPEED_HIGHER" -> "LEARNED: SPEED ESTIMATE WAS LOW"
-            "SPEED_LOWER" -> "LEARNED: SPEED ESTIMATE WAS HIGH"
-            "STABLE" -> "LEARNED: USER MARKED CONDITION STABLE"
-            "CHANGING" -> "LEARNED: USER MARKED CONDITION CHANGING"
+            "DIRECTION_CORRECT" -> "STORED • DIRECTION CORRECT"
+            "DIRECTION_WRONG" -> "STORED • DIRECTION WRONG"
+            "SPEED_HIGHER" -> "STORED • SPEED SHOULD BE HIGHER"
+            "SPEED_LOWER" -> "STORED • SPEED SHOULD BE LOWER"
+            "STABLE" -> "STORED • USER MARKED STABLE"
+            "CHANGING" -> "STORED • USER MARKED CHANGING"
             else -> "VOICE NOTE STORED: ${heard.take(48)}"
         }
-        Toast.makeText(this, "Training sample stored", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateTrainingMemoryUi() {
@@ -478,6 +539,8 @@ class MainActivity : AppCompatActivity() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             thermalListener?.let { getSystemService(PowerManager::class.java).removeThermalStatusListener(it) }
         }
+        try { speechRecognizer?.destroy() } catch (_: Throwable) {}
+        speechRecognizer = null
         super.onDestroy()
     }
 
@@ -510,6 +573,7 @@ class MainActivity : AppCompatActivity() {
         analyzer.setAmbientLux(lastAmbientLux)
         analyzer.setOpticalModeOverride(opticalOverride)
         frameAnalyzer = analyzer
+        analyzer.setKnownRangeMeters(binding.manualRangeInput.text?.toString()?.toDoubleOrNull())
         analysis.setAnalyzer(cameraController.analysisExecutor, analyzer)
         lastAnalysisReceivedMs = 0L
         analysisWatchStartedMs = SystemClock.elapsedRealtime()
@@ -542,6 +606,14 @@ class MainActivity : AppCompatActivity() {
             else -> "DETECTING OPTICAL MODE…"
         }
         binding.analysisStageText.text = r.analysisStage
+        binding.reasoningStateText.text = when {
+            !r.reasoningConfigured -> "AI REASONING • API KEY REQUIRED"
+            r.reasoningState == "ANALYSING" -> "AI REASONING • ANALYSING SCENE…"
+            else -> "AI REASONING • ${r.reasoningState} • ${(r.reasoningConfidence * 100).toInt()}%"
+        }
+        binding.reasoningSummaryText.text = if (r.reasoningSummary.isNotBlank()) r.reasoningSummary else
+            if (r.reasoningConfigured) "Reasoning supervisor is examining the scene." else "Add OPENAI_API_KEY to the build to enable scene reasoning."
+        binding.reasoningCuesText.text = if (r.reasoningCueSummary.isNotBlank()) "CUES • ${r.reasoningCueSummary}" else "CUES • waiting for scene analysis"
         binding.learningProgress.progress = r.learningPercent
         binding.learningText.text = if (r.learningUseful) "LEARNING ${r.learningPercent}%" else "SCANNING ${r.learningPercent}%"
         binding.learningDetailText.text = buildString {
@@ -565,6 +637,24 @@ class MainActivity : AppCompatActivity() {
             else -> 0xFF2E7D32.toInt()
         }
         binding.learningProgress.progressTintList = ColorStateList.valueOf(learningColor)
+
+        if (trainModeActive && activeTrainingCueLabel != null) {
+            binding.trainingProgress.progress = r.learningPercent
+            val stats = voiceTrainingMemory.stats()
+            binding.trainingMemoryText.text = "LEARNING MEMORY ${stats.samples} / ${stats.target}"
+            val userLocked = r.motionCues.any { it.label.contains("USER LOCK", true) }
+            binding.trainingStatusText.text = when {
+                !userLocked -> "${activeTrainingCueLabel} LOCKED • WAITING FOR USABLE MOTION"
+                r.learningPercent < 35 -> "${activeTrainingCueLabel} LOCKED • OBSERVING ${r.learningPercent}%"
+                r.learningPercent < 70 -> "${activeTrainingCueLabel} TRACKING • LEARNING ${r.learningPercent}%"
+                else -> "${activeTrainingCueLabel} TRACKED • READY FOR VOICE CORRECTION"
+            }
+            if (userLocked && r.learningPercent >= 70 && !trainingSampleStoredForLock) {
+                val stored = voiceTrainingMemory.store("OBSERVATION_${activeTrainingCueLabel}", r)
+                trainingSampleStoredForLock = true
+                binding.trainingMemoryText.text = "LEARNING MEMORY ${stored.samples} / ${stored.target} • SAMPLE STORED"
+            }
+        }
 
         val range = RangeEstimator.distance(rangeCtx)
         updateNavigationReadout(range)
@@ -1054,6 +1144,19 @@ class MainActivity : AppCompatActivity() {
             }
         })
         binding.previewView.setOnTouchListener { _, event ->
+            if (trainModeActive && pendingTrainingCueLabel != null && event.action == MotionEvent.ACTION_UP) {
+                val label = pendingTrainingCueLabel ?: return@setOnTouchListener true
+                val nx = (event.x / binding.previewView.width.toFloat().coerceAtLeast(1f)).coerceIn(0f, 1f)
+                val ny = (event.y / binding.previewView.height.toFloat().coerceAtLeast(1f)).coerceIn(0f, 1f)
+                binding.roiOverlay.centerOn(event.x, event.y, if (label == "FOLIAGE") 0.44f else 0.36f, if (label == "FOLIAGE") 0.40f else 0.32f)
+                frameAnalyzer?.setManualTrainingCue(label, nx.toDouble(), ny.toDouble())
+                activeTrainingCueLabel = label
+                pendingTrainingCueLabel = null
+                trainingSampleStoredForLock = false
+                binding.trainingStatusText.text = "$label LOCKED • MOVE/FLUTTER THE CUE • OBSERVING"
+                binding.trainingProgress.progress = 0
+                return@setOnTouchListener true
+            }
             scaleDetector?.onTouchEvent(event)
             true
         }

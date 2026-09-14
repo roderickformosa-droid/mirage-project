@@ -27,12 +27,15 @@ class FrameAnalyzer(
     private val textureVariance = TextureVarianceExtractor()
     private val frequencyDomain = FrequencyDomainExtractor()
     private val motionCueDetector = MotionCueDetector()
+    private val manualCueTracker = ManualCueTracker()
     private val cueTracker = CuePersistenceTracker()
     private val opticalModeDetector = OpticalModeDetector()
     private val learningWindow = EvidenceLearningWindow()
     private val aiVision = AiVisionClassifier()
     private val cloudVision = CloudVisionClassifier(context)
     private val windFusion = WindFusionEngine()
+    private val reasoningScene = ReasoningSceneAnalyzer(context)
+    @Volatile private var knownRangeM: Double? = null
 
     private var lastAnalyzedNs = 0L
     @Volatile private var targetHz: Double = targetHz
@@ -63,11 +66,22 @@ class FrameAnalyzer(
     fun setAutoRoiEnabled(enabled: Boolean) { autoRoiEnabled = enabled; if (!enabled) autoRoi = null; resetForNewRoi() }
     fun setOpticalModeOverride(value: OpticalModeDetector.Override) { opticalModeDetector.setOverride(value); resetForNewRoi() }
     fun opticalModeOverride(): OpticalModeDetector.Override = opticalModeDetector.currentOverride()
+    fun setManualTrainingCue(label: String, normalizedX: Double, normalizedY: Double) {
+        manualCueTracker.lock(label, normalizedX, normalizedY)
+        learningWindow.reset()
+    }
+    fun clearManualTrainingCue() {
+        manualCueTracker.clear()
+        learningWindow.reset()
+    }
+    fun manualTrainingCueLabel(): String? = manualCueTracker.activeLabel()
+    fun setKnownRangeMeters(value: Double?) { knownRangeM = value?.takeIf { it > 0.0 } }
+    fun reasoningConfigured(): Boolean = reasoningScene.configured()
     private fun intervalForHz(hz: Double): Long = (1_000_000_000.0 / hz).toLong()
 
     fun resetForNewRoi() {
         opticalFlow.reset(); blockMatching.reset(); textureVariance.reset(); frequencyDomain.reset()
-        motionCueDetector.reset(); cueTracker.reset(); learningWindow.reset()
+        motionCueDetector.reset(); cueTracker.reset(); learningWindow.reset(); manualCueTracker.resetHistory()
         mirageStableSinceNs = 0L; lastMirageClockAngle = Double.NaN; lastMirageMagnitude = Double.NaN
         mirageCandidateFrames = 0; autoRoi = null
     }
@@ -96,12 +110,26 @@ class FrameAnalyzer(
             } else stabilizedU8.clone()
             val sceneLuma = Core.mean(working).`val`[0]
 
+            // Periodic scene-level reasoning stays in the loop throughout the session. It does not
+            // replace fast CV; it tells the app which environmental evidence appears meaningful.
+            reasoningScene.submitIfDue(working, when (optical.mode) {
+                OpticalModeDetector.Mode.SPOTTING_SCOPE -> "SPOTTING SCOPE"
+                OpticalModeDetector.Mode.PHONE -> "PHONE CAMERA"
+                else -> "DETECTING"
+            }, knownRangeM)
+            val reasoning = reasoningScene.latest()
+
             // Environmental cues are analysed immediately and concurrently with mirage.
-            var instantaneousCues = if (stabInfo.trackingOk) motionCueDetector.process(working, cameraTimestampNs) else emptyList()
+            // TRAIN mode user-lock bypasses the generic motion/semantic gate completely: once the
+            // user taps a cue, motion is measured directly inside that persistent region even when
+            // the generic stabilizer/scene tracker says the scope image is not trackable.
+            val genericCues = if (stabInfo.trackingOk) motionCueDetector.process(working, cameraTimestampNs) else emptyList()
+            val manualCue = manualCueTracker.process(working, cameraTimestampNs)
+            var instantaneousCues = if (manualCue != null) listOf(manualCue) + genericCues else genericCues
             val strongestRaw = instantaneousCues.maxByOrNull { cuePriority(it) }
-            aiVision.submitCue(working, strongestRaw)
-            val localAi = aiVision.latestCue(1600L)
-            if (localAi != null && localAi.confidence >= 0.70 && instantaneousCues.isNotEmpty()) {
+            if (!manualCueTracker.active()) aiVision.submitCue(working, strongestRaw)
+            val localAi = if (!manualCueTracker.active()) aiVision.latestCue(1600L) else null
+            if (!manualCueTracker.active() && localAi != null && localAi.confidence >= 0.70 && instantaneousCues.isNotEmpty()) {
                 val idx = instantaneousCues.indices.maxByOrNull { cuePriority(instantaneousCues[it]) } ?: -1
                 if (idx >= 0) instantaneousCues = instantaneousCues.toMutableList().also { list ->
                     list[idx] = list[idx].copy(label = localAi.label, confidence = max(list[idx].confidence, localAi.confidence))
@@ -110,11 +138,11 @@ class FrameAnalyzer(
 
             // Cloud is a rare semantic fallback, not the live tracker.
             val cueForCloud = instantaneousCues.maxByOrNull { cuePriority(it) }
-            if (cueForCloud != null && (localAi == null || localAi.confidence < 0.72)) {
+            if (!manualCueTracker.active() && cueForCloud != null && (localAi == null || localAi.confidence < 0.72)) {
                 cloudVision.submitIfAllowed(working, cueForCloud, localAi?.confidence ?: 0.0)
             }
             val cloud = cloudVision.latest(2200L)
-            if (cloud != null && cloud.confidence >= 0.72 && instantaneousCues.isNotEmpty() && (localAi == null || localAi.confidence < 0.72)) {
+            if (!manualCueTracker.active() && cloud != null && cloud.confidence >= 0.72 && instantaneousCues.isNotEmpty() && (localAi == null || localAi.confidence < 0.72)) {
                 val idx = instantaneousCues.indices.maxByOrNull { cuePriority(instantaneousCues[it]) } ?: -1
                 if (idx >= 0) instantaneousCues = instantaneousCues.toMutableList().also { list ->
                     list[idx] = list[idx].copy(label = cloud.label + " [CLOUD]", confidence = max(list[idx].confidence, cloud.confidence))
@@ -203,10 +231,12 @@ class FrameAnalyzer(
                 cueScore = cueScore,
                 mirageScore = if (sufficientSignal) signalScore else 0.0,
                 agreement = fusion.directionAgreement,
-                trackingOk = stabInfo.trackingOk
+                trackingOk = stabInfo.trackingOk || manualCueTracker.active()
             )
 
             val stage = when {
+                manualCueTracker.active() && primaryCue != null -> "USER LOCK • ${manualCueTracker.activeLabel()} • TRACKING"
+                manualCueTracker.active() && primaryCue == null -> "USER LOCK • ${manualCueTracker.activeLabel()} • WAITING FOR MOTION"
                 optical.mode == OpticalModeDetector.Mode.DETECTING -> "SCANNING • DETECTING MODE"
                 optical.changedRecently -> if (scopeMode) "SCANNING • REACQUIRING SCOPE" else "SCANNING • STABILIZING CAMERA"
                 !stabInfo.trackingOk -> "SCANNING • STABILIZING"
@@ -241,7 +271,15 @@ class FrameAnalyzer(
                 learningUseful = learning.useful,
                 trackedCueCount = motionCues.size,
                 primaryCueLabel = primaryCueLabel,
-                primaryCueConfidence = primaryCue?.confidence ?: 0.0
+                primaryCueConfidence = primaryCue?.confidence ?: 0.0,
+                reasoningConfigured = reasoningScene.configured(),
+                reasoningState = reasoning?.state ?: if (reasoningScene.configured()) "ANALYSING" else "OFFLINE",
+                reasoningConfidence = reasoning?.confidence ?: 0.0,
+                reasoningSummary = reasoning?.summary ?: "",
+                reasoningDirection = reasoning?.direction ?: "UNKNOWN",
+                reasoningSpeedBandMph = reasoning?.speedBandMph ?: "UNKNOWN",
+                reasoningCueSummary = reasoning?.cues?.joinToString(" • ") { "${it.label}:${it.sensitivity}" } ?: "",
+                reasoningRationale = reasoning?.rationale ?: ""
             )
             onResult(result, image)
         } catch (t: Throwable) {

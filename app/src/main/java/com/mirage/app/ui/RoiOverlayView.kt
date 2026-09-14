@@ -114,4 +114,16 @@ class RoiOverlayView @JvmOverloads constructor(
     }
 
     fun roiInViewCoords(): RectF = RectF(roi)
+
+    fun centerOn(x: Float, y: Float, widthFraction: Float = 0.34f, heightFraction: Float = 0.30f) {
+        if (width <= 0 || height <= 0) return
+        val rw = (width * widthFraction).coerceAtLeast(80f).coerceAtMost(width.toFloat())
+        val rh = (height * heightFraction).coerceAtLeast(70f).coerceAtMost(height.toFloat())
+        val left = (x - rw / 2f).coerceIn(0f, width - rw)
+        val top = (y - rh / 2f).coerceIn(0f, height - rh)
+        roi = RectF(left, top, left + rw, top + rh)
+        invalidate()
+        onRoiChanged?.invoke(RectF(roi))
+    }
 }
+

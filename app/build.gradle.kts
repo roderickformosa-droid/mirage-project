@@ -11,13 +11,17 @@ android {
         applicationId = "com.mirage.app"
         minSdk = 26   // Camera2 manual focus/exposure controls need API 23+; 26 keeps things simpler
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.73-voice-learning"
+        versionCode = 19
+        versionName = "0.75-reasoning-supervisor"
 
         // Optional Google Cloud Vision key. Prefer setting CLOUD_VISION_API_KEY as a
         // GitHub Actions secret/environment variable; blank keeps cloud recognition disabled.
         val cloudVisionKey = System.getenv("CLOUD_VISION_API_KEY") ?: ""
         buildConfigField("String", "CLOUD_VISION_API_KEY", "\"$cloudVisionKey\"")
+
+        // Cloud reasoning supervisor. For field prototypes only; production should proxy through a backend.
+        val openAiKey = System.getenv("OPENAI_API_KEY") ?: ""
+        buildConfigField("String", "OPENAI_API_KEY", "\"$openAiKey\"")
     }
 
     buildTypes {

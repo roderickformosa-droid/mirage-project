@@ -26,6 +26,7 @@ jobs:
       - name: Build debug APK
         env:
           CLOUD_VISION_API_KEY: ${{ secrets.CLOUD_VISION_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: gradle assembleDebug --stacktrace
 
       - name: Rename output

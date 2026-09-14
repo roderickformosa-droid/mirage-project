@@ -104,5 +104,15 @@ data class AnalysisResult(
     val learningUseful: Boolean = false,
     val trackedCueCount: Int = 0,
     val primaryCueLabel: String = "NONE",
-    val primaryCueConfidence: Double = 0.0
+    val primaryCueConfidence: Double = 0.0,
+
+    // v0.75 periodic cloud reasoning supervisor. Observational only.
+    val reasoningConfigured: Boolean = false,
+    val reasoningState: String = "OFFLINE",
+    val reasoningConfidence: Double = 0.0,
+    val reasoningSummary: String = "",
+    val reasoningDirection: String = "UNKNOWN",
+    val reasoningSpeedBandMph: String = "UNKNOWN",
+    val reasoningCueSummary: String = "",
+    val reasoningRationale: String = ""
 )
