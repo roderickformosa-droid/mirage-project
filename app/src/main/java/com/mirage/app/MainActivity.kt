@@ -6,6 +6,8 @@ import android.content.IntentFilter
 import android.speech.RecognizerIntent
 import android.speech.RecognitionListener
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import android.os.BatteryManager
 import android.graphics.RectF
 import android.content.res.ColorStateList
@@ -71,6 +73,11 @@ class MainActivity : AppCompatActivity() {
     private var analysisWatchStartedMs = 0L
     private var lastAutomaticCameraRestartMs = 0L
     private var opticalOverride = OpticalModeDetector.Override.AUTO
+    private var windScanActive = false
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private var lastScopeVoicePromptMs = 0L
+    private var latestOpticalMode = "DETECTING"
 
     // RANGE ASSIST: orientation is local; location is optional. Cloud Vision uses internet only
     // for rare fallback object-label checks when local recognition is uncertain.
@@ -171,7 +178,7 @@ class MainActivity : AppCompatActivity() {
 
     private val analysisWatchdogRunnable = object : Runnable {
         override fun run() {
-            if (!waitingForManualResume && frameAnalyzer != null) {
+            if (windScanActive && !waitingForManualResume && frameAnalyzer != null) {
                 val now = SystemClock.elapsedRealtime()
                 val age = if (lastAnalysisReceivedMs > 0L) now - lastAnalysisReceivedMs else now - analysisWatchStartedMs
                 if (age > 2800L) {
@@ -234,10 +241,12 @@ class MainActivity : AppCompatActivity() {
         feedbackLogger = UserFeedbackLogger(this)
         voiceTrainingMemory = VoiceTrainingMemory(this)
         setupInAppSpeechRecognizer()
+        setupFieldVoice()
         updateTrainingMemoryUi()
         setupFeedbackControls()
         setupCloudUsageControls()
         setupOpticalModeControls()
+        setupWindScanControls()
         binding.manualRangeInput.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) {
                 val meters = binding.manualRangeInput.text?.toString()?.toDoubleOrNull()?.takeIf { it > 0.0 }
@@ -296,6 +305,59 @@ class MainActivity : AppCompatActivity() {
         setupPinchZoom()
 
         installThermalProtection()
+    }
+
+    private fun setupFieldVoice() {
+        tts = TextToSpeech(this) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (ttsReady) tts?.language = Locale.UK
+        }
+    }
+
+    private fun speakField(text: String) {
+        if (ttsReady) tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "mirage-field")
+    }
+
+    private fun setupWindScanControls() {
+        windScanActive = false
+        binding.windScanButton.text = "START WIND SCAN"
+        binding.reasoningStateText.text = "ALIGN WITH TARGET • PRESS START"
+        binding.reasoningSummaryText.text = "Camera preview is live. AI analysis is OFF until START WIND SCAN."
+        binding.windScanButton.setOnClickListener {
+            if (!windScanActive) startWindScan() else stopWindScan()
+        }
+    }
+
+    private fun startWindScan() {
+        windScanActive = true
+        publishedWindResult = null
+        lastWindPublishMs = 0L
+        val meters = binding.manualRangeInput.text?.toString()?.toDoubleOrNull()?.takeIf { it > 0.0 }
+        frameAnalyzer?.setKnownRangeMeters(meters)
+        frameAnalyzer?.setWindScanActive(true)
+        binding.windScanButton.text = "STOP SCAN"
+        binding.reasoningStateText.text = "AI REASONING • ANALYSING SCENE…"
+        binding.reasoningSummaryText.text = "Looking for credible environmental cues. No cue means no wind graphic."
+        binding.resultCard.visibility = View.GONE
+        binding.windVisualPanel.visibility = View.GONE
+        binding.feedbackPanel.visibility = View.GONE
+        binding.evidencePathView.visibility = View.GONE
+        speakField("Wind scan started. Keep the target direction aligned. Turn up the phone volume if needed.")
+    }
+
+    private fun stopWindScan() {
+        windScanActive = false
+        frameAnalyzer?.setWindScanActive(false)
+        autoZoomSearching = false
+        publishedWindResult = null
+        binding.windScanButton.text = "START WIND SCAN"
+        binding.reasoningStateText.text = "SCAN OFF • ALIGN WITH TARGET"
+        binding.reasoningSummaryText.text = "Camera preview remains live. AI analysis and cloud reasoning are stopped."
+        binding.reasoningCuesText.text = "CUES • scan stopped"
+        binding.resultCard.visibility = View.GONE
+        binding.windVisualPanel.visibility = View.GONE
+        binding.feedbackPanel.visibility = View.GONE
+        binding.evidencePathView.visibility = View.GONE
     }
 
     private fun toggleTrainMode() {
@@ -541,6 +603,8 @@ class MainActivity : AppCompatActivity() {
         }
         try { speechRecognizer?.destroy() } catch (_: Throwable) {}
         speechRecognizer = null
+        try { tts?.stop(); tts?.shutdown() } catch (_: Throwable) {}
+        tts = null
         super.onDestroy()
     }
 
@@ -548,7 +612,8 @@ class MainActivity : AppCompatActivity() {
         if (waitingForManualResume) return
         cameraController.startCamera(binding.previewView, null, analysisTargetSize) { analysis, _, _ ->
             attachAnalyzer(analysis); scheduleSessionTimeout()
-            mainHandler.postDelayed({ if (autoZoomEnabled) beginAutoZoomSweep() }, 900L)
+            // v0.76 starts wide and does not spend analysis/API resources until START WIND SCAN.
+            try { cameraController.setZoomRatio(1f) } catch (_: Throwable) {}
         }
     }
 
@@ -573,6 +638,7 @@ class MainActivity : AppCompatActivity() {
         analyzer.setAmbientLux(lastAmbientLux)
         analyzer.setOpticalModeOverride(opticalOverride)
         frameAnalyzer = analyzer
+        analyzer.setWindScanActive(windScanActive)
         analyzer.setKnownRangeMeters(binding.manualRangeInput.text?.toString()?.toDoubleOrNull())
         analysis.setAnalyzer(cameraController.analysisExecutor, analyzer)
         lastAnalysisReceivedMs = 0L
@@ -595,6 +661,25 @@ class MainActivity : AppCompatActivity() {
         val enrichedCues = raw.motionCues.map { RangeEstimator.enrich(it, raw.fullWidthPx, rangeCtx) }
         val r = raw.copy(motionCues = enrichedCues)
         latestAnalysisResult = r
+        latestOpticalMode = r.opticalMode
+
+        if (!windScanActive) {
+            binding.opticalModeText.text = when (r.opticalMode) {
+                "SPOTTING SCOPE" -> "SPOTTING SCOPE • ALIGN TARGET"
+                "PHONE CAMERA" -> "PHONE CAMERA • ALIGN TARGET"
+                else -> "ALIGN TARGET • SELECT MODE"
+            }
+            binding.analysisStageText.text = "READY • PRESS START WIND SCAN"
+            binding.learningText.text = "SCAN OFF"
+            binding.learningDetailText.text = "NO AI/API ANALYSIS WHILE ALIGNING"
+            binding.reasoningStateText.text = "ALIGN WITH TARGET • PRESS START"
+            binding.reasoningSummaryText.text = "Camera preview is live. AI analysis is OFF until START WIND SCAN."
+            binding.reasoningCuesText.text = "CUES • not scanning"
+            binding.resultCard.visibility = View.GONE
+            binding.windVisualPanel.visibility = View.GONE
+            binding.feedbackPanel.visibility = View.GONE
+            return
+        }
 
         // v0.68 intentionally hides frame-by-frame arrows/labels from the normal field UI.
         // The overlay remains available to debug builds but does not drive the user's conclusion.
@@ -614,6 +699,8 @@ class MainActivity : AppCompatActivity() {
         binding.reasoningSummaryText.text = if (r.reasoningSummary.isNotBlank()) r.reasoningSummary else
             if (r.reasoningConfigured) "Reasoning supervisor is examining the scene." else "Add OPENAI_API_KEY to the build to enable scene reasoning."
         binding.reasoningCuesText.text = if (r.reasoningCueSummary.isNotBlank()) "CUES • ${r.reasoningCueSummary}" else "CUES • waiting for scene analysis"
+        binding.evidencePathView.visibility = if (r.reasoningDepthSummary.isNotBlank()) View.VISIBLE else View.GONE
+        binding.evidencePathView.setEvidence(binding.manualRangeInput.text?.toString()?.toDoubleOrNull(), r.reasoningDepthSummary)
         binding.learningProgress.progress = r.learningPercent
         binding.learningText.text = if (r.learningUseful) "LEARNING ${r.learningPercent}%" else "SCANNING ${r.learningPercent}%"
         binding.learningDetailText.text = buildString {
@@ -660,7 +747,12 @@ class MainActivity : AppCompatActivity() {
         updateNavigationReadout(range)
 
         // Publish at most one new wind condition every 3 seconds. Internal analysis remains fast.
-        val publishable = r.aggregateWindState != "INSUFFICIENT" && r.aggregateWindConfidence >= 0.42 && r.learningPercent >= 35 && r.aggregateWindMaxMps > 0.0
+        // v0.76: REASON FIRST, RENDER SECOND. Low-level motion can never publish a wind graphic
+        // unless the reasoning supervisor independently finds credible environmental evidence.
+        val reasoningAuthorizes = r.reasoningConfigured &&
+            r.reasoningConfidence >= 0.45 && r.reasoningCueSummary.isNotBlank()
+        val publishable = reasoningAuthorizes && r.aggregateWindState != "INSUFFICIENT" &&
+            r.aggregateWindConfidence >= 0.42 && r.learningPercent >= 35 && r.aggregateWindMaxMps > 0.0
         if (publishable && tempNow - lastWindPublishMs >= 3000L) {
             publishedWindResult = r
             lastWindPublishMs = tempNow
@@ -700,8 +792,15 @@ class MainActivity : AppCompatActivity() {
         binding.graphStabResidual.addValue(kotlin.math.hypot(r.stabDx, r.stabDy).toFloat())
         if (binding.debugOverlay.visibility == View.VISIBLE) binding.debugOverlay.update(r, analysisRoiToView(r))
         if (r.opticalMode == "SPOTTING SCOPE") {
-            // Avoid digital zoom sweeps destabilizing an already magnified scope image.
+            // Never sweep digital zoom in scope mode: an Android zoom transition can select a
+            // different physical lens that is not aligned with the scope adapter. Ask the operator instead.
             autoZoomSearching = false
+            val now = SystemClock.elapsedRealtime()
+            if (r.reasoningNeedsCloserLook && now - lastScopeVoicePromptMs > 12_000L) {
+                lastScopeVoicePromptMs = now
+                val cue = r.reasoningFocusCue.takeUnless { it.isBlank() || it == "NONE" } ?: "potential cue"
+                speakField("Potential $cue. Please increase spotting scope magnification slightly and keep the scene centred.")
+            }
         } else {
             handleAutoZoom(r)
         }
@@ -1134,6 +1233,10 @@ class MainActivity : AppCompatActivity() {
         scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 if (!::cameraController.isInitialized) return false
+                if (latestOpticalMode == "SPOTTING SCOPE" || opticalOverride == OpticalModeDetector.Override.SPOTTING_SCOPE) {
+                    speakField("Please adjust magnification on the spotting scope. Phone lens switching is locked in scope mode.")
+                    return true
+                }
                 if (autoZoomEnabled) binding.autoZoomToggle.isChecked = false
                 val (minZ,maxZ)=cameraController.zoomRange()
                 val next=(cameraController.currentZoomRatio()*detector.scaleFactor).coerceIn(minZ,maxZ)
@@ -1177,7 +1280,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginAutoZoomSweep() {
-        if (!autoZoomEnabled || waitingForManualResume) return
+        if (!windScanActive || !autoZoomEnabled || waitingForManualResume) return
+        if (latestOpticalMode == "SPOTTING SCOPE" || opticalOverride == OpticalModeDetector.Override.SPOTTING_SCOPE) return
         val (minZoom, maxZoom) = cameraController.zoomRange()
         val desired = listOf(1f, 1.4f, 2f, 3f, 4f)
             .map { it.coerceIn(minZoom, maxZoom) }.distinct().sorted()
@@ -1226,6 +1330,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun manualZoom(direction: Int) {
         if (!::cameraController.isInitialized) return
+        if (latestOpticalMode == "SPOTTING SCOPE" || opticalOverride == OpticalModeDetector.Override.SPOTTING_SCOPE) {
+            speakField("Please adjust magnification on the spotting scope. Phone lens switching is locked in scope mode.")
+            return
+        }
         if (autoZoomEnabled) {
             binding.autoZoomToggle.isChecked = false // listener disables auto
         }

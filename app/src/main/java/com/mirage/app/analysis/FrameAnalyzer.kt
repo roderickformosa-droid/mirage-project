@@ -36,6 +36,7 @@ class FrameAnalyzer(
     private val windFusion = WindFusionEngine()
     private val reasoningScene = ReasoningSceneAnalyzer(context)
     @Volatile private var knownRangeM: Double? = null
+    @Volatile private var scanActive = false
 
     private var lastAnalyzedNs = 0L
     @Volatile private var targetHz: Double = targetHz
@@ -77,6 +78,11 @@ class FrameAnalyzer(
     fun manualTrainingCueLabel(): String? = manualCueTracker.activeLabel()
     fun setKnownRangeMeters(value: Double?) { knownRangeM = value?.takeIf { it > 0.0 } }
     fun reasoningConfigured(): Boolean = reasoningScene.configured()
+    fun setWindScanActive(active: Boolean) {
+        scanActive = active
+        reasoningScene.setEnabled(active)
+        if (!active) resetForNewRoi()
+    }
     private fun intervalForHz(hz: Double): Long = (1_000_000_000.0 / hz).toLong()
 
     fun resetForNewRoi() {
@@ -110,9 +116,13 @@ class FrameAnalyzer(
             } else stabilizedU8.clone()
             val sceneLuma = Core.mean(working).`val`[0]
 
+            // Preview-only idle mode: camera stays live for alignment, but no CV/AI/cloud work
+            // proceeds until the operator explicitly starts a wind scan.
+            if (!scanActive) return
+
             // Periodic scene-level reasoning stays in the loop throughout the session. It does not
             // replace fast CV; it tells the app which environmental evidence appears meaningful.
-            reasoningScene.submitIfDue(working, when (optical.mode) {
+            if (scanActive) reasoningScene.submitIfDue(working, when (optical.mode) {
                 OpticalModeDetector.Mode.SPOTTING_SCOPE -> "SPOTTING SCOPE"
                 OpticalModeDetector.Mode.PHONE -> "PHONE CAMERA"
                 else -> "DETECTING"
@@ -127,7 +137,7 @@ class FrameAnalyzer(
             val manualCue = manualCueTracker.process(working, cameraTimestampNs)
             var instantaneousCues = if (manualCue != null) listOf(manualCue) + genericCues else genericCues
             val strongestRaw = instantaneousCues.maxByOrNull { cuePriority(it) }
-            if (!manualCueTracker.active()) aiVision.submitCue(working, strongestRaw)
+            if (scanActive && !manualCueTracker.active()) aiVision.submitCue(working, strongestRaw)
             val localAi = if (!manualCueTracker.active()) aiVision.latestCue(1600L) else null
             if (!manualCueTracker.active() && localAi != null && localAi.confidence >= 0.70 && instantaneousCues.isNotEmpty()) {
                 val idx = instantaneousCues.indices.maxByOrNull { cuePriority(instantaneousCues[it]) } ?: -1
@@ -138,7 +148,7 @@ class FrameAnalyzer(
 
             // Cloud is a rare semantic fallback, not the live tracker.
             val cueForCloud = instantaneousCues.maxByOrNull { cuePriority(it) }
-            if (!manualCueTracker.active() && cueForCloud != null && (localAi == null || localAi.confidence < 0.72)) {
+            if (scanActive && !manualCueTracker.active() && cueForCloud != null && (localAi == null || localAi.confidence < 0.72)) {
                 cloudVision.submitIfAllowed(working, cueForCloud, localAi?.confidence ?: 0.0)
             }
             val cloud = cloudVision.latest(2200L)
@@ -279,7 +289,10 @@ class FrameAnalyzer(
                 reasoningDirection = reasoning?.direction ?: "UNKNOWN",
                 reasoningSpeedBandMph = reasoning?.speedBandMph ?: "UNKNOWN",
                 reasoningCueSummary = reasoning?.cues?.joinToString(" • ") { "${it.label}:${it.sensitivity}" } ?: "",
-                reasoningRationale = reasoning?.rationale ?: ""
+                reasoningRationale = reasoning?.rationale ?: "",
+                reasoningNeedsCloserLook = reasoning?.needsCloserLook ?: false,
+                reasoningFocusCue = reasoning?.focusCue ?: "NONE",
+                reasoningDepthSummary = reasoning?.cues?.joinToString("|") { "${it.label}:${it.depthBand}" } ?: ""
             )
             onResult(result, image)
         } catch (t: Throwable) {

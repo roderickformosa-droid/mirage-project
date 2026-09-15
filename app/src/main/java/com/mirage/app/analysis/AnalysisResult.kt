@@ -114,5 +114,8 @@ data class AnalysisResult(
     val reasoningDirection: String = "UNKNOWN",
     val reasoningSpeedBandMph: String = "UNKNOWN",
     val reasoningCueSummary: String = "",
-    val reasoningRationale: String = ""
+    val reasoningRationale: String = "",
+    val reasoningNeedsCloserLook: Boolean = false,
+    val reasoningFocusCue: String = "NONE",
+    val reasoningDepthSummary: String = ""
 )

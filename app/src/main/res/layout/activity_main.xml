@@ -54,10 +54,11 @@
         android:orientation="vertical" android:padding="7dp" android:background="#8A0B1720"
         app:layout_constraintTop_toBottomOf="@id/learningPanel" app:layout_constraintStart_toStartOf="@id/previewView" app:layout_constraintEnd_toEndOf="@id/previewView">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-            <TextView android:id="@+id/reasoningStateText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="AI REASONING • WAITING" android:textColor="#71E7FF" android:textStyle="bold" android:textSize="9sp" />
+            <TextView android:id="@+id/reasoningStateText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="ALIGN WITH TARGET • PRESS START" android:textColor="#71E7FF" android:textStyle="bold" android:textSize="9sp" />
+            <Button android:id="@+id/windScanButton" android:layout_width="wrap_content" android:layout_height="34dp" android:minHeight="0dp" android:text="START WIND SCAN" android:textStyle="bold" android:textSize="8sp" android:textColor="#FFFFFF" android:backgroundTint="#287A4B" />
             <EditText android:id="@+id/manualRangeInput" android:layout_width="82dp" android:layout_height="34dp" android:hint="RANGE m" android:inputType="numberDecimal" android:singleLine="true" android:textColor="#FFFFFF" android:textColorHint="#99FFFFFF" android:textSize="9sp" android:gravity="center" android:backgroundTint="#71E7FF" />
         </LinearLayout>
-        <TextView android:id="@+id/reasoningSummaryText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Cloud reasoning will rank the most useful environmental cues." android:textColor="#E6FFFFFF" android:textSize="9sp" android:maxLines="2" />
+        <TextView android:id="@+id/reasoningSummaryText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Camera preview is live. AI analysis is OFF until START WIND SCAN." android:textColor="#E6FFFFFF" android:textSize="9sp" android:maxLines="2" />
         <TextView android:id="@+id/reasoningCuesText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="CUES • waiting for first scene analysis" android:textColor="#BFFFFFFF" android:textSize="8sp" android:maxLines="2" />
     </LinearLayout>
 
@@ -72,6 +73,15 @@
         <com.mirage.app.ui.WindDirectionVisualView android:id="@+id/windDirectionVisual" android:layout_width="match_parent" android:layout_height="70dp" />
         <TextView android:id="@+id/windVisualLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="9sp" android:gravity="center" />
     </LinearLayout>
+
+
+    <com.mirage.app.ui.EvidencePathView
+        android:id="@+id/evidencePathView"
+        android:layout_width="96dp" android:layout_height="230dp"
+        android:layout_marginEnd="8dp" android:layout_marginTop="8dp"
+        android:background="#70101419" android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/windVisualPanel"
+        app:layout_constraintEnd_toEndOf="@id/previewView" />
 
     <!-- Clean result card. Hidden until the algorithm has a real result. -->
     <LinearLayout
@@ -134,7 +144,7 @@
         <Button android:id="@+id/closeCloudUsageButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CLOSE" android:textSize="11sp" />
     </LinearLayout>
 
-    <TextView android:id="@+id/appVersionText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="v0.75 • REASONING SUPERVISOR" android:textColor="#DFFFFFFF" android:textSize="9sp" android:textStyle="bold" android:background="#55000000" android:paddingHorizontal="5dp" android:paddingVertical="2dp" android:layout_marginEnd="7dp" android:layout_marginBottom="4dp" app:layout_constraintBottom_toTopOf="@id/controlStrip" app:layout_constraintEnd_toEndOf="parent" />
+    <TextView android:id="@+id/appVersionText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="v0.76 • REASONING-GATED SCAN" android:textColor="#DFFFFFFF" android:textSize="9sp" android:textStyle="bold" android:background="#55000000" android:paddingHorizontal="5dp" android:paddingVertical="2dp" android:layout_marginEnd="7dp" android:layout_marginBottom="4dp" app:layout_constraintBottom_toTopOf="@id/controlStrip" app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Minimal field controls; advanced controls remain available but do not cover the camera. -->
     <LinearLayout android:id="@+id/controlStrip" android:layout_width="0dp" android:layout_height="104dp" android:orientation="vertical" android:background="#F20A0D10" android:padding="4dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">

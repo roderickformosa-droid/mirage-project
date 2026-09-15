@@ -29,7 +29,8 @@ class ReasoningSceneAnalyzer(private val context: Context) {
         val label: String,
         val sensitivity: String,
         val location: String,
-        val observation: String
+        val observation: String,
+        val depthBand: String
     )
     data class Assessment(
         val createdMs: Long,
@@ -39,19 +40,26 @@ class ReasoningSceneAnalyzer(private val context: Context) {
         val direction: String,
         val speedBandMph: String,
         val cues: List<Cue>,
-        val rationale: String
+        val rationale: String,
+        val needsCloserLook: Boolean,
+        val focusCue: String
     )
 
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
     @Volatile private var latest: Assessment? = null
     @Volatile private var lastSubmitMs = 0L
+    @Volatile private var enabled = false
 
     fun configured(): Boolean = BuildConfig.OPENAI_API_KEY.isNotBlank()
+    fun setEnabled(value: Boolean) {
+        enabled = value
+        if (!value) { latest = null; lastSubmitMs = 0L }
+    }
     fun latest(maxAgeMs: Long = 30_000L): Assessment? = latest?.takeIf { SystemClock.elapsedRealtime() - it.createdMs <= maxAgeMs }
 
-    fun submitIfDue(gray: Mat, opticalMode: String, rangeM: Double? = null, minIntervalMs: Long = 8_000L) {
-        if (!configured() || gray.empty() || busy.get()) return
+    fun submitIfDue(gray: Mat, opticalMode: String, rangeM: Double? = null, minIntervalMs: Long = 2_500L) {
+        if (!enabled || !configured() || gray.empty() || busy.get()) return
         val now = SystemClock.elapsedRealtime()
         if (now - lastSubmitMs < minIntervalMs) return
         lastSubmitMs = now
@@ -78,7 +86,7 @@ Your task is to identify visible environmental cues that could reveal wind movem
 Do not give firing advice, holds, corrections, aiming instructions, or a command to shoot. Do not infer a shot result.
 From one still image you may identify cue geometry, but do not pretend to observe temporal movement that requires video. If motion/stability cannot be known from this frame, say INSUFFICIENT and let the on-device temporal tracker decide over time.
 Return ONLY valid JSON with exactly these keys:
-{"state":"STABLE|CHANGING|INSUFFICIENT","confidence":0.0,"summary":"short scene summary","direction":"visual direction if supported, else UNKNOWN","speed_band_mph":"broad visual estimate only if genuinely supported, else UNKNOWN","rationale":"short explanation","cues":[{"label":"FLAG","sensitivity":"HIGH|MEDIUM|LOW","location":"brief normalized/relative location description","observation":"what makes this cue useful or not"}]}
+{"state":"STABLE|CHANGING|INSUFFICIENT","confidence":0.0,"summary":"short scene summary","direction":"visual direction if supported, else UNKNOWN","speed_band_mph":"broad visual estimate only if genuinely supported, else UNKNOWN","rationale":"short explanation","needs_closer_look":false,"focus_cue":"cue needing closer inspection, else NONE","cues":[{"label":"FLAG","sensitivity":"HIGH|MEDIUM|LOW","location":"brief normalized/relative location description","observation":"what makes this cue useful or not","depth_band":"NEAR|MID|FAR|UNKNOWN"}]}
 Use at most 4 cues. Confidence is 0..1.
 """.trimIndent()
 
@@ -121,7 +129,7 @@ Use at most 4 cues. Confidence is 0..1.
         val cues = mutableListOf<Cue>()
         if (cueArray != null) for (i in 0 until minOf(4, cueArray.length())) {
             val q = cueArray.optJSONObject(i) ?: continue
-            cues += Cue(q.optString("label", "CUE"), q.optString("sensitivity", "LOW"), q.optString("location", ""), q.optString("observation", ""))
+            cues += Cue(q.optString("label", "CUE"), q.optString("sensitivity", "LOW"), q.optString("location", ""), q.optString("observation", ""), q.optString("depth_band", "UNKNOWN"))
         }
         return Assessment(
             createdMs = SystemClock.elapsedRealtime(),
@@ -131,7 +139,9 @@ Use at most 4 cues. Confidence is 0..1.
             direction = j.optString("direction", "UNKNOWN"),
             speedBandMph = j.optString("speed_band_mph", "UNKNOWN"),
             cues = cues,
-            rationale = j.optString("rationale", "")
+            rationale = j.optString("rationale", ""),
+            needsCloserLook = j.optBoolean("needs_closer_look", false),
+            focusCue = j.optString("focus_cue", "NONE")
         )
     }
 }
