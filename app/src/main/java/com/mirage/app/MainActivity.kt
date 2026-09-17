@@ -72,8 +72,12 @@ class MainActivity : AppCompatActivity() {
     private var lastAnalysisReceivedMs = 0L
     private var analysisWatchStartedMs = 0L
     private var lastAutomaticCameraRestartMs = 0L
-    private var opticalOverride = OpticalModeDetector.Override.AUTO
+    private var opticalOverride = OpticalModeDetector.Override.PHONE
     private var windScanActive = false
+    private enum class ObserverStage { ALIGN_TARGET, ENTER_RANGE, SEARCHING }
+    private var observerStage = ObserverStage.ALIGN_TARGET
+    private var observationReferenceLocked = false
+    private var scopeDisplayZoom = 1f
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var lastScopeVoicePromptMs = 0L
@@ -298,9 +302,6 @@ class MainActivity : AppCompatActivity() {
             if (checked) beginAutoZoomSweep() else autoZoomSearching = false
             updateZoomText()
         }
-        binding.zoomPlus.setOnClickListener { manualZoom(+1) }
-        binding.zoomMinus.setOnClickListener { manualZoom(-1) }
-        binding.voiceZoomButton.setOnClickListener { if (trainModeActive) startTrainingVoice() else startVoiceZoom() }
         binding.trainModeButton.setOnClickListener { toggleTrainMode() }
         setupPinchZoom()
 
@@ -320,29 +321,55 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupWindScanControls() {
         windScanActive = false
-        binding.windScanButton.text = "START WIND SCAN"
-        binding.reasoningStateText.text = "ALIGN WITH TARGET • PRESS START"
-        binding.reasoningSummaryText.text = "Camera preview is live. AI analysis is OFF until START WIND SCAN."
+        observerStage = ObserverStage.ALIGN_TARGET
+        observationReferenceLocked = false
+        binding.manualRangeInput.visibility = View.GONE
+        binding.windScanButton.text = "LOCK TARGET"
+        binding.reasoningStateText.text = "1 • ALIGN TARGET"
+        binding.reasoningSummaryText.text = "Place the centre crosshair on the observation target, hold steady, then lock it."
         binding.windScanButton.setOnClickListener {
-            if (!windScanActive) startWindScan() else stopWindScan()
+            when {
+                windScanActive -> stopWindScan()
+                observerStage == ObserverStage.ALIGN_TARGET -> lockObservationReference()
+                observerStage == ObserverStage.ENTER_RANGE -> startWindScan()
+                else -> stopWindScan()
+            }
         }
     }
 
+    private fun lockObservationReference() {
+        observationReferenceLocked = true
+        observerStage = ObserverStage.ENTER_RANGE
+        binding.manualRangeInput.visibility = View.VISIBLE
+        binding.manualRangeInput.requestFocus()
+        binding.windScanButton.text = "START CUE SEARCH"
+        binding.reasoningStateText.text = "2 • TARGET LOCKED"
+        binding.reasoningSummaryText.text = "Enter the target distance, then start the environmental cue search."
+        speakField("Target reference locked. What is the distance to the target?")
+    }
+
     private fun startWindScan() {
+        val meters = binding.manualRangeInput.text?.toString()?.toDoubleOrNull()?.takeIf { it > 0.0 }
+        if (meters == null) {
+            binding.reasoningStateText.text = "2 • ENTER TARGET DISTANCE"
+            binding.reasoningSummaryText.text = "Distance is needed to anchor the observation corridor."
+            speakField("Please enter the target distance before starting the cue search.")
+            return
+        }
+        observerStage = ObserverStage.SEARCHING
         windScanActive = true
         publishedWindResult = null
         lastWindPublishMs = 0L
-        val meters = binding.manualRangeInput.text?.toString()?.toDoubleOrNull()?.takeIf { it > 0.0 }
         frameAnalyzer?.setKnownRangeMeters(meters)
         frameAnalyzer?.setWindScanActive(true)
         binding.windScanButton.text = "STOP SCAN"
-        binding.reasoningStateText.text = "AI REASONING • ANALYSING SCENE…"
+        binding.reasoningStateText.text = "3 • SEARCHING FOR CUES…"
         binding.reasoningSummaryText.text = "Looking for credible environmental cues. No cue means no wind graphic."
         binding.resultCard.visibility = View.GONE
         binding.windVisualPanel.visibility = View.GONE
         binding.feedbackPanel.visibility = View.GONE
         binding.evidencePathView.visibility = View.GONE
-        speakField("Wind scan started. Keep the target direction aligned. Turn up the phone volume if needed.")
+        speakField("Target and distance saved. Widen the view and scan slowly around the target area for environmental cues.")
     }
 
     private fun stopWindScan() {
@@ -350,9 +377,12 @@ class MainActivity : AppCompatActivity() {
         frameAnalyzer?.setWindScanActive(false)
         autoZoomSearching = false
         publishedWindResult = null
-        binding.windScanButton.text = "START WIND SCAN"
-        binding.reasoningStateText.text = "SCAN OFF • ALIGN WITH TARGET"
-        binding.reasoningSummaryText.text = "Camera preview remains live. AI analysis and cloud reasoning are stopped."
+        observerStage = ObserverStage.ALIGN_TARGET
+        observationReferenceLocked = false
+        binding.manualRangeInput.visibility = View.GONE
+        binding.windScanButton.text = "LOCK TARGET"
+        binding.reasoningStateText.text = "1 • ALIGN TARGET"
+        binding.reasoningSummaryText.text = "Place the centre crosshair on the observation target, hold steady, then lock it."
         binding.reasoningCuesText.text = "CUES • scan stopped"
         binding.resultCard.visibility = View.GONE
         binding.windVisualPanel.visibility = View.GONE
@@ -956,9 +986,14 @@ class MainActivity : AppCompatActivity() {
         updateButton()
         binding.opticalModeButton.setOnClickListener {
             opticalOverride = when (opticalOverride) {
-                OpticalModeDetector.Override.AUTO -> OpticalModeDetector.Override.PHONE
-                OpticalModeDetector.Override.PHONE -> OpticalModeDetector.Override.SPOTTING_SCOPE
-                OpticalModeDetector.Override.SPOTTING_SCOPE -> OpticalModeDetector.Override.AUTO
+                OpticalModeDetector.Override.SPOTTING_SCOPE -> OpticalModeDetector.Override.PHONE
+                else -> OpticalModeDetector.Override.SPOTTING_SCOPE
+            }
+            if (opticalOverride == OpticalModeDetector.Override.SPOTTING_SCOPE) {
+                autoZoomSearching = false
+                scopeDisplayZoom = 1f
+                binding.previewView.scaleX = 1f
+                binding.previewView.scaleY = 1f
             }
             frameAnalyzer?.setOpticalModeOverride(opticalOverride)
             publishedWindResult = null
@@ -1234,7 +1269,15 @@ class MainActivity : AppCompatActivity() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 if (!::cameraController.isInitialized) return false
                 if (latestOpticalMode == "SPOTTING SCOPE" || opticalOverride == OpticalModeDetector.Override.SPOTTING_SCOPE) {
-                    speakField("Please adjust magnification on the spotting scope. Phone lens switching is locked in scope mode.")
+                    // Scope mode uses display-only digital enlargement. We deliberately do NOT call
+                    // CameraX zoom here, because a logical rear camera may switch physical lenses
+                    // and destroy phone-to-eyepiece alignment.
+                    scopeDisplayZoom = (scopeDisplayZoom * detector.scaleFactor).coerceIn(1f, 4f)
+                    binding.previewView.pivotX = binding.previewView.width / 2f
+                    binding.previewView.pivotY = binding.previewView.height / 2f
+                    binding.previewView.scaleX = scopeDisplayZoom
+                    binding.previewView.scaleY = scopeDisplayZoom
+                    binding.zoomText.text = "%.1fx DIGITAL".format(scopeDisplayZoom)
                     return true
                 }
                 if (autoZoomEnabled) binding.autoZoomToggle.isChecked = false
